@@ -38,9 +38,16 @@ export interface Config {
   xget_domain: string
   two_factor_enabled: boolean
   two_factor_secret: string
-  captcha_enabled: boolean
-  captcha_app_id: string
-  captcha_secret_key?: string
+  pow_enabled?: boolean
+  pow_algorithm?: string
+  pow_cost?: number
+  pow_key_length?: number
+  pow_difficulty?: number
+  pow_challenge_ttl?: string
+  download_token_ttl?: string
+  traffic_limit_gb?: number
+  external_blacklist_url?: string
+  appeal_contact?: string
   launchers: LauncherConfig[]
   rate_limit_enabled?: boolean
   rate_limit_per_minute?: number
@@ -95,4 +102,33 @@ export interface BlacklistItem {
 export interface AddBlacklistRequest {
   ip: string
   reason: string
+}
+
+export interface BlacklistStats {
+  all: number
+  manual?: number
+  external?: number
+  local?: number
+  auto?: number
+  [key: string]: number | undefined
+}
+
+export interface BlacklistPageData {
+  items: BlacklistItem[]
+  total: number
+  page: number
+  page_size: number
+  stats: BlacklistStats
+}
+
+export interface FirewallStatus {
+  settings: {
+    enabled: boolean
+    per_minute: number
+    ban_threshold: number
+  }
+  whitelist_count: number
+  cidr_ban_count: number
+  tracked_ips: number
+  active_strikes: number
 }

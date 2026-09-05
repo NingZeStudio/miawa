@@ -32,6 +32,20 @@ func NewClient(token, proxyURL string) *Client {
 	return c
 }
 
+// NewClientWithBaseURL 创建指向自定义 API 根地址的客户端（须以 / 结尾）。
+// 仅供测试注入本地假 GitHub API 使用；代理语义与 NewClient 相同。
+func NewClientWithBaseURL(token, proxyURL, baseURL string) *Client {
+	c := &Client{token: token, proxyURL: proxyURL}
+	gc := buildGithubClient(token, proxyURL)
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		panic(fmt.Sprintf("github: invalid base url %q: %v", baseURL, err))
+	}
+	gc.BaseURL = u
+	c.cli.Store(gc)
+	return c
+}
+
 // SetProxy 运行时切换代理。传空字符串表示清除代理（仅使用环境变量）。
 // 安全可并发：内部用 atomic.Pointer 替换底层客户端。
 func (c *Client) SetProxy(proxyURL string) {

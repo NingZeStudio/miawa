@@ -20,9 +20,9 @@ import (
 
 // Settings 控制请求频率限制行为。
 type Settings struct {
-	Enabled      bool // 是否启用频率限制
-	PerMinute    int  // 单 IP 每分钟最大请求数
-	BanThreshold int  // 违规累计达到该值自动封禁（1 分钟窗口内连续超限才计违规）
+	Enabled      bool `json:"enabled"`       // 是否启用频率限制
+	PerMinute    int  `json:"per_minute"`    // 单 IP 每分钟最大请求数
+	BanThreshold int  `json:"ban_threshold"` // 违规累计达到该值自动封禁（1 分钟窗口内连续超限才计违规）
 }
 
 // BanFunc 自动封禁回调：由调用方注入（写 DB 黑名单 + 同步封禁记录文件），
@@ -38,9 +38,9 @@ type Decision struct {
 }
 
 const (
-	strikeTTL     = 30 * time.Minute      // 违规计数保留时长，超时归零
-	maxTrackedIPs = 100000                // 内存保护：窗口数上限，超出时立即清理
-	cleanupPeriod = time.Minute           // 后台清理周期
+	strikeTTL     = 30 * time.Minute // 违规计数保留时长，超时归零
+	maxTrackedIPs = 100000           // 内存保护：窗口数上限，超出时立即清理
+	cleanupPeriod = time.Minute      // 后台清理周期
 )
 
 // entrySet 是一组精确 IP + CIDR 网段的集合，支持并发读取。
@@ -297,6 +297,39 @@ func GetSettings() Settings {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.settings
+}
+
+// StatusSnapshot 是防火墙运行状态的只读快照（管理端展示用）。
+type StatusSnapshot struct {
+	Settings       Settings `json:"settings"`
+	WhitelistCount int      `json:"whitelist_count"` // 白名单条目数（IP + CIDR）
+	CIDRBanCount   int      `json:"cidr_ban_count"`  // 黑名单中的网段条目数
+	TrackedIPs     int      `json:"tracked_ips"`     // 近 2 分钟内有请求窗口的 IP 数
+	ActiveStrikes  int      `json:"active_strikes"`  // 30 分钟内有违规记录的 IP 数
+}
+
+// Snapshot 返回防火墙当前运行状态。未 Init 时返回零值快照。
+func Snapshot() StatusSnapshot {
+	m := defaultManager
+	if m == nil {
+		return StatusSnapshot{}
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return StatusSnapshot{
+		Settings:       m.settings,
+		WhitelistCount: entrySetSize(m.whitelist),
+		CIDRBanCount:   entrySetSize(m.cidrBans),
+		TrackedIPs:     len(m.windows),
+		ActiveStrikes:  len(m.strikes),
+	}
+}
+
+func entrySetSize(e *entrySet) int {
+	if e == nil {
+		return 0
+	}
+	return len(e.exact) + len(e.cidrs)
 }
 
 func (m *Manager) cleanupWorker() {

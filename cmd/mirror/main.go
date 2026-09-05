@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"sync"
 	"syscall"
@@ -21,8 +22,8 @@ import (
 	"lemwood_mirror/internal/config"
 	"lemwood_mirror/internal/db"
 	"lemwood_mirror/internal/downloader"
-	gh "lemwood_mirror/internal/github"
 	"lemwood_mirror/internal/firewall"
+	gh "lemwood_mirror/internal/github"
 	"lemwood_mirror/internal/selfupdate"
 	"lemwood_mirror/internal/server"
 	"lemwood_mirror/internal/stats"
@@ -239,6 +240,7 @@ func (sc *Scanner) ScanLauncher(launcherName string) {
 
 func main() {
 	projectRoot, _ := os.Getwd()
+	log.Printf("[启动] 柠泽资源站 %s (%s %s)", Version, runtime.GOOS, runtime.GOARCH)
 	if err := assets.SyncEmbedded(projectRoot); err != nil {
 		log.Fatalf("释放前端资源失败: %v", err)
 	}
@@ -305,7 +307,7 @@ func main() {
 		}
 	}
 
-	ghc := gh.NewClient(cfg.GitHubToken, cfg.ProxyURL)
+	ghc := gh.NewClient(cfg.EffectiveGitHubToken(), cfg.ProxyURL)
 	selfUpdateManager := selfupdate.NewManager(ghc, Version, resolveBinaryPath(), buildSelfUpdateConfig(cfg))
 	s.SetSelfUpdateManager(selfUpdateManager)
 

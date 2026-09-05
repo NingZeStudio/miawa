@@ -93,6 +93,27 @@ func (m *Manager) Peek(token string) (db.DownloadAuthorization, bool) {
 	return auth, true
 }
 
+// PeekReuse 查询"已消费但在复用窗口内"的授权，供多段下载/断点续传的
+// 后续 Range 连接校验。下载器（IDM/aria2/浏览器分段）会对同一 URL 并发
+// 建立多条连接，只有第一条能消费一次性授权；其余 Range 连接凭同一 token
+// 复用：status=consumed 且 consumed_at 距今不超过 TTL（授权签发时绑定同
+// 文件，复用校验还需调用方比对 file_path 与 client_ip）。复用不改变授权
+// 状态、不重复计数；无 Range 的普通重放不在本方法保护范围内。
+func (m *Manager) PeekReuse(token string) (db.DownloadAuthorization, bool) {
+	auth, err := db.GetDownloadAuthorizationByTokenHash(hashToken(token))
+	if err != nil {
+		return db.DownloadAuthorization{}, false
+	}
+	if auth.Status != "consumed" || auth.ConsumedAt == "" {
+		return db.DownloadAuthorization{}, false
+	}
+	consumedAt, ok := parseAuthzTime(auth.ConsumedAt)
+	if !ok || time.Since(consumedAt) > m.ttl {
+		return db.DownloadAuthorization{}, false
+	}
+	return auth, true
+}
+
 // Consume 原子消费 token 对应的授权（issued 且未过期 → consumed）。
 // 返回更新后的授权记录与是否成功。
 func (m *Manager) Consume(token string) (db.DownloadAuthorization, bool) {

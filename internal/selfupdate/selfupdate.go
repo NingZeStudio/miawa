@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -42,6 +43,10 @@ const (
 	maxUpdateDownloadSize  = 200 << 20
 	maxExtractedBinarySize = 200 << 20
 )
+
+// errAssetNotFound 表示更新资产在远端不存在（404/410），应回退下一候选，
+// 且在错误上报中让位于更有意义的失败原因（如完整性校验失败）。
+var errAssetNotFound = errors.New("更新资产不存在")
 
 // effectiveRepoURL 返回实际生效的更新源仓库地址：留空时回退到 DefaultRepoURL。
 func effectiveRepoURL(raw string) string {
@@ -325,6 +330,9 @@ func (m *Manager) Apply(ctx context.Context) (Status, error) {
 	digests := m.fetchAssetDigests(ctx, repoURL, latestVersion)
 
 	var lastErr error
+	// 多候选依次尝试时，最后候选的 404（资产缺失）会覆盖前面更有意义的错误
+	// （如摘要不匹配）。优先上报首个非"资产缺失"错误。
+	var firstSignificantErr error
 	var appliedName string
 	for _, c := range candidates {
 		expectedDigest := ""
@@ -337,6 +345,9 @@ func (m *Manager) Apply(ctx context.Context) (Status, error) {
 		}
 		if err := downloadAndReplace(ctx, httpClient, c.url, c.name, m.binaryPath, c.isArchive, expectedDigest); err != nil {
 			lastErr = err
+			if !errors.Is(err, errAssetNotFound) && firstSignificantErr == nil {
+				firstSignificantErr = err
+			}
 			log.Printf("自更新: 下载 %s 失败，尝试下一候选: %v", c.name, err)
 			continue
 		}
@@ -345,8 +356,12 @@ func (m *Manager) Apply(ctx context.Context) (Status, error) {
 		break
 	}
 	if lastErr != nil {
-		status := m.SetApplyError(lastErr)
-		return status, lastErr
+		reported := lastErr
+		if firstSignificantErr != nil {
+			reported = firstSignificantErr
+		}
+		status := m.SetApplyError(reported)
+		return status, reported
 	}
 
 	status := m.MarkApplied(latestVersion, fmt.Sprintf("已从 %s 下载并安装 %s", latestVersion, appliedName))
@@ -498,7 +513,7 @@ func buildUpdateCandidates(repoURL, tag, assetProxyURL string) ([]updateCandidat
 }
 
 // fetchAssetDigests 通过 GitHub API 获取指定 release 全部资产的 SHA-256 摘要
-//（形如 "sha256:xxxx"）。失败时返回 nil（调用方降级为无摘要校验）。
+// （形如 "sha256:xxxx"）。失败时返回 nil（调用方降级为无摘要校验）。
 func (m *Manager) fetchAssetDigests(ctx context.Context, repoURL, tag string) map[string]string {
 	if m.client == nil {
 		return nil
@@ -548,6 +563,9 @@ func downloadAndReplace(ctx context.Context, httpClient *http.Client, downloadUR
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return fmt.Errorf("%w: 下载返回状态码 %d", errAssetNotFound, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("下载返回状态码 %d", resp.StatusCode)
 	}

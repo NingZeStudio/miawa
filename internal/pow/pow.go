@@ -128,9 +128,20 @@ type Config struct {
 }
 
 // NewManager 创建管理器并启动过期清理协程。
+// Secret 为空时随机生成：挑战签名必须依赖攻击者不可预测的密钥，
+// 否则 HMAC(key="") 任何客户端都能自算，可在内存 nonce 未过期的窗口内
+// 篡改 difficulty=0 重新签名绕过 PoW（挑战仍在内存表中的前提会满足）。
 func NewManager(cfg Config) *Manager {
+	secret := []byte(cfg.Secret)
+	if len(secret) == 0 {
+		secret = make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			// 随机数不可用属系统性故障：拒绝在无签名密钥状态下启动 PoW。
+			panic(fmt.Sprintf("pow: 生成随机签名密钥失败: %v", err))
+		}
+	}
 	m := &Manager{
-		secret:             []byte(cfg.Secret),
+		secret:             secret,
 		algorithm:          AlgorithmPBKDF2,
 		cost:               defaultCost,
 		keyLength:          defaultKeyLen,
@@ -257,7 +268,7 @@ func (m *Manager) ChallengeCount() int {
 
 // VerifyAndConsume 校验提交的解并消费挑战。成功返回 nil；失败返回具体错误哨兵。
 // filePath 必须与签发时一致（文件绑定）；clientIP 必须与签发来源一致
-//（挑战不可跨 IP 转让），签发时未记录 IP 的旧挑战豁免该检查。
+// （挑战不可跨 IP 转让），签发时未记录 IP 的旧挑战豁免该检查。
 //
 // 错误答案不消费挑战，客户端可在过期前用同一挑战重试；并发提交同一挑战时，
 // 后到的请求在锁内看到 issuing/consumed，返回 ErrChallengeConsumed。

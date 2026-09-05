@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -762,10 +763,13 @@ func buildVersionList(versions map[string]string, infoCache map[string]map[strin
 // ============================================================
 
 // handleV2AdminConfig 管理后台配置读写（信封包裹）。
+// 秘密字段（token/密码类）GET 一律掩码返回、POST 留空保持原值：
+// 控制台不需要回显密钥明文，掩码可避免密钥经浏览器缓存/代理日志泄露。
 func (s *State) handleV2AdminConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		cfgCopy := *s.Conf()
-		cfgCopy.AdminPassword = "" // 不返回密码哈希
+		maskConfigSecrets(&cfgCopy)
+		markNoStore(w)
 		writeV2Success(w, r, cfgCopy, false)
 		return
 	}
@@ -781,16 +785,10 @@ func (s *State) handleV2AdminConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// 保持密码不变，除非提供了新密码
-		if newCfg.AdminPassword == "" {
-			newCfg.AdminPassword = oldCfg.AdminPassword
-		} else {
-			hashed, err := auth.HashPassword(newCfg.AdminPassword)
-			if err != nil {
-				writeV2Error(w, r, http.StatusInternalServerError, "hash_failed", "Failed to hash password", nil)
-				return
-			}
-			newCfg.AdminPassword = hashed
+		// 秘密字段留空 = 保持现值（GET 掩码后前端必然回传空值）
+		if err := keepConfigSecrets(&newCfg, oldCfg); err != nil {
+			writeV2Error(w, r, http.StatusInternalServerError, "hash_failed", "Failed to hash password", nil)
+			return
 		}
 
 		if err := config.NormalizeConfig(&newCfg); err != nil {
@@ -864,16 +862,92 @@ func (s *State) handleV2AdminConfig(w http.ResponseWriter, r *http.Request) {
 	writeV2Error(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method Not Allowed", nil)
 }
 
+// maskConfigSecrets 把配置中的秘密字段清空（GET 响应不回显密钥明文）。
+// two_factor_secret 例外：管理端需要现有密钥生成验证器二维码。
+func maskConfigSecrets(cfg *config.Config) {
+	cfg.AdminPassword = ""
+	cfg.GitHubToken = ""
+	cfg.PowHMACSecret = ""
+	cfg.MySQLPassword = ""
+	cfg.PostgresPassword = ""
+}
+
+// keepConfigSecrets 用 oldCfg 回填 newCfg 中为空的秘密字段（POST 留空=保持不变）。
+// AdminPassword 非空时视为新密码，做 bcrypt 哈希后写入。
+func keepConfigSecrets(newCfg, oldCfg *config.Config) error {
+	if newCfg.AdminPassword == "" {
+		newCfg.AdminPassword = oldCfg.AdminPassword
+	} else {
+		hashed, err := auth.HashPassword(newCfg.AdminPassword)
+		if err != nil {
+			return err
+		}
+		newCfg.AdminPassword = hashed
+	}
+	if newCfg.GitHubToken == "" {
+		newCfg.GitHubToken = oldCfg.GitHubToken
+	}
+	if newCfg.PowHMACSecret == "" {
+		newCfg.PowHMACSecret = oldCfg.PowHMACSecret
+	}
+	if newCfg.MySQLPassword == "" {
+		newCfg.MySQLPassword = oldCfg.MySQLPassword
+	}
+	if newCfg.PostgresPassword == "" {
+		newCfg.PostgresPassword = oldCfg.PostgresPassword
+	}
+	return nil
+}
+
 // handleV2AdminBlacklist 黑名单管理（信封包裹）。
+// GET 支持 page/page_size/source/q 分页过滤；不带 page 参数时保持旧版全量列表
+// 响应（兼容外部脚本/旧客户端）。分页响应附带按来源统计，供前端统计卡使用。
 func (s *State) handleV2AdminBlacklist(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		list, err := db.GetIPBlacklist()
+		if r.URL.Query().Get("page") == "" {
+			list, err := db.GetIPBlacklist()
+			if err != nil {
+				writeV2Error(w, r, http.StatusInternalServerError, "internal_error", err.Error(), nil)
+				return
+			}
+			writeV2Success(w, r, list, false)
+			return
+		}
+
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+		if pageSize < 1 {
+			pageSize = 20
+		}
+		if pageSize > 100 {
+			pageSize = 100
+		}
+		source := r.URL.Query().Get("source")
+		keyword := strings.TrimSpace(r.URL.Query().Get("q"))
+
+		items, total, err := db.GetIPBlacklistPaged((page-1)*pageSize, pageSize, source, keyword)
 		if err != nil {
 			writeV2Error(w, r, http.StatusInternalServerError, "internal_error", err.Error(), nil)
 			return
 		}
-		writeV2Success(w, r, list, false)
+		counts, err := db.GetIPBlacklistSourceCounts()
+		if err != nil {
+			writeV2Error(w, r, http.StatusInternalServerError, "internal_error", err.Error(), nil)
+			return
+		}
+		// 前端统计卡语义：manual=手动，external=外部同步，local(+历史 auto)=自动封禁
+		counts["auto"] = counts["local"] + counts["auto"]
+		writeV2Success(w, r, map[string]any{
+			"items":     items,
+			"total":     total,
+			"page":      page,
+			"page_size": pageSize,
+			"stats":     counts,
+		}, false)
 	case http.MethodPost:
 		r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 		var req struct {
@@ -916,6 +990,17 @@ func (s *State) handleV2AdminBlacklist(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeV2Error(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method Not Allowed", nil)
 	}
+}
+
+// handleV2AdminFirewallStatus 防火墙运行状态（信封包裹）。
+// 汇总频率限制设置、白名单/网段封禁条数与内存中的活跃窗口/违规计数。
+func (s *State) handleV2AdminFirewallStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeV2Error(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method Not Allowed", nil)
+		return
+	}
+	markNoStore(w)
+	writeV2Success(w, r, firewall.Snapshot(), false)
 }
 
 // handleV2AdminFiles 文件管理（信封包裹，下载除外）。

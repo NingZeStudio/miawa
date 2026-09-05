@@ -610,20 +610,43 @@ func (s *State) Routes(mux *http.ServeMux) {
 
 		// 授权处理：先 Peek 做绑定校验（不消耗），全部校验通过后再原子消费，
 		// 避免 404/405/超配额/路径不匹配请求烧掉一次性授权。
+		// Peek 失败时尝试并行分段复用：下载器（IDM/aria2/浏览器分段/断点续传）
+		// 对同一 URL 携带 Range 头并发建连，只有第一条连接能消费授权；已消费
+		// token 在 TTL 内且 Range 请求 + 文件 + 客户端 IP 均匹配时放行后续
+		// 连接（不再重复消费）。无 Range 的重放不受复用保护，仍然拒绝。
 		var auth db.DownloadAuthorization
+		reused := false
 		if token != "" {
 			peeked, ok := s.AUTHZ().Peek(token)
 			if !ok {
-				if isBrowserRequest(r) && cfg.PowEnabled {
-					http.Redirect(w, r, "/verify?file="+url.QueryEscape(relPath), http.StatusFound)
+				var reuseAuth db.DownloadAuthorization
+				reuseOK := false
+				if r.Header.Get("Range") != "" {
+					reuseAuth, reuseOK = s.AUTHZ().PeekReuse(token)
+				}
+				if !reuseOK {
+					if isBrowserRequest(r) && cfg.PowEnabled {
+						http.Redirect(w, r, "/verify?file="+url.QueryEscape(relPath), http.StatusFound)
+						return
+					}
+					writeJSONError(w, http.StatusForbidden, "invalid_token", "Download token is invalid or expired")
 					return
 				}
-				writeJSONError(w, http.StatusForbidden, "invalid_token", "Download token is invalid or expired")
-				return
-			}
-			if peeked.FilePath != relPath {
-				writeJSONError(w, http.StatusForbidden, "token_mismatch", "Download token does not match requested file")
-				return
+				if reuseAuth.FilePath != relPath {
+					writeJSONError(w, http.StatusForbidden, "token_mismatch", "Download token does not match requested file")
+					return
+				}
+				if reuseAuth.ClientIP != "" && reuseAuth.ClientIP != clientIP {
+					writeJSONError(w, http.StatusForbidden, "client_ip_mismatch", "Download token is bound to another client IP")
+					return
+				}
+				auth = reuseAuth
+				reused = true
+			} else {
+				if peeked.FilePath != relPath {
+					writeJSONError(w, http.StatusForbidden, "token_mismatch", "Download token does not match requested file")
+					return
+				}
 			}
 		}
 
@@ -642,7 +665,8 @@ func (s *State) Routes(mux *http.ServeMux) {
 			return
 		}
 
-		if token != "" {
+		// 首次使用的 token 在此原子消费；并行分段复用（reused）不再消费。
+		if token != "" && !reused {
 			consumed, ok := s.AUTHZ().Consume(token)
 			if !ok {
 				// 授权并发失效：回滚刚预留的流量（按实际 0 字节结账）
@@ -752,6 +776,7 @@ func (s *State) Routes(mux *http.ServeMux) {
 	// 管理后台（v2 admin 中间件）
 	mux.Handle("/api/v2/admin/config", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminConfig))))
 	mux.Handle("/api/v2/admin/blacklist", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminBlacklist))))
+	mux.Handle("/api/v2/admin/firewall/status", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminFirewallStatus))))
 	mux.Handle("/api/v2/admin/files", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminFiles))))
 	mux.Handle("/api/v2/admin/files/download", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminFileDownload))))
 	mux.Handle("/api/v2/admin/self-update/status", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminSelfUpdateStatus))))

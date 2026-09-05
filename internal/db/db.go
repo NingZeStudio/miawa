@@ -680,6 +680,113 @@ func GetLocalIPBlacklist() ([]map[string]string, error) {
 	return list, nil
 }
 
+// escapeLike 转义 LIKE 通配符，保证用户输入按字面匹配（三方言默认转义符均为反斜杠）。
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
+// GetIPBlacklistPaged 分页查询黑名单（created_at 倒序），返回当前页与过滤后的总数。
+// source 语义与前端一致："all"/空 不过滤；manual/external 精确匹配；
+// local/auto 匹配自动封禁（实际落库值为 local，兼容历史 auto 值）。
+// keyword 按 ip / reason 字面模糊匹配。
+func GetIPBlacklistPaged(offset, limit int, source, keyword string) ([]map[string]string, int, error) {
+	where := ""
+	var args []interface{}
+	switch source {
+	case "", "all":
+	case "local", "auto":
+		where = " WHERE source IN ('local','auto')"
+	default:
+		where = " WHERE source = ?"
+		args = append(args, source)
+	}
+	if keyword != "" {
+		likeOp := "LIKE"
+		if isPostgres {
+			likeOp = "ILIKE"
+		}
+		// ESCAPE 子句按方言生成：MySQL 的字符串字面量处理反斜杠转义，
+		// `'\'` 是未闭合字符串（语法错误），须写成 `'\\'`；
+		// SQLite 字面量不处理转义，`'\'` 即反斜杠；
+		// PostgreSQL（standard_conforming_strings）与 MySQL 的 LIKE 默认
+		// 转义符本就是反斜杠，可省略 ESCAPE。
+		var escapeClause string
+		switch {
+		case isMySQL:
+			escapeClause = " ESCAPE '\\\\'"
+		case isPostgres:
+			escapeClause = ""
+		default: // SQLite
+			escapeClause = " ESCAPE '\\'"
+		}
+		cond := "(ip " + likeOp + " ?" + escapeClause + " OR reason " + likeOp + " ?" + escapeClause + ")"
+		if where == "" {
+			where = " WHERE " + cond
+		} else {
+			where += " AND " + cond
+		}
+		like := "%" + escapeLike(keyword) + "%"
+		args = append(args, like, like)
+	}
+
+	var total int
+	if err := DB.QueryRow(rebind("SELECT COUNT(*) FROM ip_blacklist"+where), args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := "SELECT ip, reason, source, ban_type, created_at FROM ip_blacklist" + where + " ORDER BY created_at DESC, ip DESC"
+	if limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, limit, offset)
+	}
+	rows, err := DB.Query(rebind(query), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	list := make([]map[string]string, 0, limit)
+	for rows.Next() {
+		var ip, reason, source, banType string
+		var createdAtRaw interface{}
+		if err := rows.Scan(&ip, &reason, &source, &banType, &createdAtRaw); err != nil {
+			return nil, 0, err
+		}
+		list = append(list, map[string]string{
+			"ip":         ip,
+			"reason":     reason,
+			"source":     source,
+			"ban_type":   banType,
+			"created_at": formatTime(createdAtRaw),
+		})
+	}
+	return list, total, rows.Err()
+}
+
+// GetIPBlacklistSourceCounts 返回黑名单按来源的条数统计，额外含 "all" 总数。
+func GetIPBlacklistSourceCounts() (map[string]int, error) {
+	rows, err := DB.Query("SELECT source, COUNT(*) FROM ip_blacklist GROUP BY source")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := map[string]int{"all": 0}
+	for rows.Next() {
+		var source string
+		var n int
+		if err := rows.Scan(&source, &n); err != nil {
+			return nil, err
+		}
+		counts[source] = n
+		counts["all"] += n
+	}
+	return counts, rows.Err()
+}
+
 func formatTime(raw interface{}) string {
 	if raw == nil {
 		return ""

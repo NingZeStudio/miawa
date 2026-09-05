@@ -101,6 +101,82 @@ func TestBlacklistCIDRAcrossDialectsIntegration(t *testing.T) {
 	}
 }
 
+// 黑名单服务端分页/过滤在三种方言下的适配：
+// 关键词按字面匹配（_ 不是通配符，escapeLike + ESCAPE 子句），source 过滤语义一致。
+func TestBlacklistPagedAcrossDialectsIntegration(t *testing.T) {
+	if testing.Short() || getenv("LEMWOOD_MIGRATION_INTEGRATION") != "1" {
+		t.Skip("set LEMWOOD_MIGRATION_INTEGRATION=1 to run local MySQL/PostgreSQL integration")
+	}
+
+	for name, cfg := range dialectIntegrationConfigs() {
+		t.Run(name, func(t *testing.T) {
+			closeTestDB()
+			if err := InitDB(t.TempDir(), cfg); err != nil {
+				t.Fatalf("InitDB(%s) error = %v", name, err)
+			}
+			defer closeTestDB()
+
+			if _, err := DB.Exec("DELETE FROM ip_blacklist"); err != nil {
+				t.Fatalf("清空 ip_blacklist 失败: %v", err)
+			}
+			entries := []struct{ ip, source, reason string }{
+				{"192.0.2.101", "manual", "a_c"},     // 字面含下划线
+				{"192.0.2.102", "manual", "abc"},     // 若 _ 被当通配符会被 "a_c" 误命中
+				{"198.51.100.7", "external", "外部同步说明"},
+				{"203.0.113.99", "local", "流量超限自动封禁"},
+			}
+			for _, e := range entries {
+				if err := AddIPToBlacklistWithSource(e.ip, e.reason, e.source, "manual"); err != nil {
+					t.Fatalf("seed %s: %v", e.ip, err)
+				}
+			}
+
+			// 分页与总数
+			items, total, err := GetIPBlacklistPaged(0, 2, "", "")
+			if err != nil {
+				t.Fatalf("GetIPBlacklistPaged error = %v", err)
+			}
+			if total != 4 || len(items) != 2 {
+				t.Fatalf("分页结果不符: total=%d items=%d", total, len(items))
+			}
+
+			// source 过滤
+			_, total, err = GetIPBlacklistPaged(0, 50, "local", "")
+			if err != nil {
+				t.Fatalf("source 过滤 error = %v", err)
+			}
+			if total != 1 {
+				t.Fatalf("source=local 应 1 条, got %d", total)
+			}
+
+			// 字面关键词：_ 不是通配符，"a_c" 只命中自身，不能命中 "abc"
+			_, total, err = GetIPBlacklistPaged(0, 50, "", "a_c")
+			if err != nil {
+				t.Fatalf("关键词过滤 error = %v", err)
+			}
+			if total != 1 {
+				t.Fatalf("字面 a_c 应只命中 1 条（_ 不是通配符）: total=%d", total)
+			}
+			_, total, err = GetIPBlacklistPaged(0, 50, "", "192.0.2.10")
+			if err != nil {
+				t.Fatalf("IP 前缀过滤 error = %v", err)
+			}
+			if total != 2 {
+				t.Fatalf("IP 前缀应命中 2 条, got %d", total)
+			}
+
+			// 统计
+			counts, err := GetIPBlacklistSourceCounts()
+			if err != nil {
+				t.Fatalf("GetIPBlacklistSourceCounts error = %v", err)
+			}
+			if counts["all"] != 4 || counts["manual"] != 2 || counts["external"] != 1 || counts["local"] != 1 {
+				t.Fatalf("统计不符: %v", counts)
+			}
+		})
+	}
+}
+
 // SQLite → MySQL 一次性迁移（mysql_migration: true）应携带 CIDR 黑名单条目。
 func TestSQLiteToMySQLMigrationCarriesCIDRBlacklistIntegration(t *testing.T) {
 	if testing.Short() || getenv("LEMWOOD_MIGRATION_INTEGRATION") != "1" {

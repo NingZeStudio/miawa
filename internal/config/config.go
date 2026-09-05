@@ -362,6 +362,16 @@ func LoadConfig(projectRoot string) (*Config, error) {
 	return cfg, nil
 }
 
+// EffectiveGitHubToken 返回实际生效的 GitHub Token：
+// GITHUB_TOKEN 环境变量优先，其次配置文件中的值。读取点应统一使用本方法，
+// 保证环境变量覆盖语义且不会经 Save 写回磁盘。
+func (c *Config) EffectiveGitHubToken() string {
+	if env := os.Getenv("GITHUB_TOKEN"); env != "" {
+		return env
+	}
+	return c.GitHubToken
+}
+
 func NormalizeConfig(cfg *Config) error {
 	if cfg.StoragePath == "" {
 		return errors.New("config.storage_path 不能为空")
@@ -383,7 +393,7 @@ func NormalizeConfig(cfg *Config) error {
 	cfg.SelfUpdateChannel = string(channel)
 	if cfg.AdminEnabled {
 		if cfg.AdminUser == "" || cfg.AdminPassword == "" {
-			fmt.Println("警告: 管理员账号或密码未配置，管理后台已自动禁用")
+			log.Printf("[配置] 警告: 管理员账号或密码未配置，管理后台已自动禁用")
 			cfg.AdminEnabled = false
 		}
 		if cfg.AdminMaxRetries <= 0 {
@@ -393,11 +403,11 @@ func NormalizeConfig(cfg *Config) error {
 			cfg.AdminLockDuration = 120
 		}
 	} else {
-		fmt.Println("提示: 管理后台当前处于禁用状态")
+		log.Printf("[配置] 提示: 管理后台当前处于禁用状态")
 	}
-	if env := os.Getenv("GITHUB_TOKEN"); env != "" {
-		cfg.GitHubToken = env
-	}
+	// GITHUB_TOKEN 环境变量只在运行时通过 EffectiveGitHubToken() 注入，
+	// 不写回 cfg.GitHubToken：NormalizeConfig 之后可能紧跟 Save/自动补齐渲染，
+	// 注入会使环境变量里的密钥被持久化到 config.yaml。
 	if cfg.TrafficLimitGB < 0 {
 		cfg.TrafficLimitGB = 5
 	}

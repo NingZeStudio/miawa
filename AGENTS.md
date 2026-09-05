@@ -47,7 +47,8 @@
 - `config.yaml` 和旧 `config.json` **都在 .gitignore（含 secrets，绝不提交）**。仓库里 `internal/config/default.yaml` 是提交的嵌入式默认模板（经 `embedded.go` 内嵌）。
 - `LoadConfig` 行为：无 yaml 但存在旧 `config.json` → 自动迁移到 yaml 并删除旧 json；两者都没有 → 释放内嵌 `default.yaml` 写盘。
 - **后台保存会从 `defaultConfigTemplate`（text/template）整体重写 config.yaml**，不要指望手写在 yaml 里加的自定义注释能在后台保存后保留。
-- `GITHUB_TOKEN` 环境变量覆盖 yaml 里的 `github_token`。
+- `GITHUB_TOKEN` 环境变量覆盖 yaml 里的 `github_token`，**但绝不写回 cfg.GitHubToken**（2026-09-05 起）：读取点统一用 `cfg.EffectiveGitHubToken()`；此前 NormalizeConfig 直接注入会导致 LoadConfig"自动补齐"把 env token 持久化到 config.yaml（密钥落盘缺陷，已修）。
+- **admin config API 秘密字段**（admin_password/github_token/pow_hmac_secret/mysql_password/postgres_password）：GET 一律掩码返回（two_factor_secret 例外，管理端 enroll 需要回显），POST 留空=保持原值（`maskConfigSecrets`/`keepConfigSecrets`）。
 - `NormalizeConfig` 不变量：`traffic_limit_gb < 0` → 5；`max_versions ≤ 0` → 3；`admin_enabled` 但 user/password 空 → 自动禁用后台；`check_cron` 空 → `*/10 * * * *`。
 - 密码用 bcrypt 哈希：`htpasswd -bnBC 14 "" <password> | tr -d ':\n'`。
 
@@ -60,6 +61,9 @@
 - 部署实测结论（2026-09-01，SQLite→PG→MySQL 三阶段切换）：`ip_blacklist` 的 CIDR 条目在三方言下均按 TEXT 精确存取，无需 schema 变更；迁移后防刷墙流量状态（download_events 当日 bytes）与统计口径完整保留；管理端 CIDR 增删 + 内存网段匹配在三种后端下均即时生效。
 
 ## 防火墙（2026-09 起）
+
+- **黑名单分页（2026-09-05）**：`GET /api/v2/admin/blacklist` 带 `page/page_size/source/q` 时走服务端分页（`db.GetIPBlacklistPaged`，响应含 items/total/stats，stats 里 `auto = local + 历史 auto` 供前端统计卡）；不带 `page` 保持旧版全量列表（兼容外部脚本）。`GET /api/v2/admin/firewall/status` 返回 `firewall.Snapshot()`（设置 + 白名单/网段封禁/活跃窗口/违规 IP 计数）。管理端 BlacklistPage 全部改服务端分页 + 顶部防火墙状态卡。
+- **下载多段复用（2026-09-05）**：`/download/{path}` 对已消费 token 允许"并行分段复用"（`download_authz.PeekReuse`）：仅当请求带 `Range` 头、同 file_path、同 client_ip、consumed_at 在 `download_token_ttl` 窗口内时放行（不再二次消费授权）。无 Range 的重放仍 403。多线程下载器（IDM/aria2/浏览器分段）与断点续传由此可用。
 
 - `internal/firewall/` 单例管理器，`Init(Settings, whitelist, banFunc)` 在 main.go 启动时调用；`UpdateSettings` 支持管理后台保存配置后热更新（无需重启）。**依赖方向**：firewall → db/netutil；config → netutil（白名单校验）。**config 绝不能 import firewall**（db 依赖 config，会成环），所以 IP/CIDR 解析函数放在 `netutil.ParseEntry/ValidEntry` 三方共用。
 - **三层拦截**（`SecurityMiddleware`，现为 `(s *State)` 方法，读取 `Config.AppealContact` 替代了旧硬编码 QQ 群号）：① 本地黑名单精确 IP 查 DB；② CIDR 网段封禁内存匹配（`RefreshBlacklist` 从 `ip_blacklist` 表读取含 `/` 的条目构建，管理员增删/自动封禁/外部同步后都要调用刷新）；③ 外部黑名单。频率限制（429 + Retry-After）在黑名单检查之后。
@@ -84,7 +88,7 @@
 - **事件/流量（`download_events` 表）**：每次下载一行（`authorization_id/file/launcher/version/client_ip/country/bytes_served/completed/status_code/date`）。**全切口径**：served=bytes_served（含中止），completed=bytes_served WHERE completed=1。防刷墙按 IP 当日 served 读 `download_events`（`GetDailyServedByIPFromEventsToday`，注入 `traffic.InitTracker`）；`daily_traffic`/`daily_completed_traffic` **冻结为只读历史基线**（不再写入，schema v4 迁移从 `downloads` 回填事件行 bytes=0）。
 - **v2 端点**：`POST /api/v2/downloads/prepare`（CLI/API 直发授权，无 PoW，保留）、`GET /landing`（Peek）、`GET /downloads/challenge` + `POST /downloads/authorize`（浏览器 PoW，替代极验 verify）、`GET /api/v2/pow/config`。`/download/{path}`：token 取 `?token=` 或 `Authorization: Bearer`；处理顺序：路径/文件校验→method→Peek(绑定校验)→ReserveTraffic→Consume→ServeFile→RecordDownloadEvent→FinalizeTraffic(defer)；任何失败都不烧授权；HEAD 直通不消费授权不计流量。无 token+浏览器→PoW 验证页，无 token+非浏览器→403 `verification_required`。
 - **stats**：`applyDownloadAndTrafficStats`（stats.go）合并：下载次数/top 从 `download_events`（含回填）；流量字节 = 冻结基线 SUM + 事件 SUM（按日 union）；visits/geo 不变（仍读 `visits`）。**注意（2026-08-14 修复）**：每日 `DailyStats[].DownloadCount` 与 `TrafficBytes` 一并合并事件口径，`queryDailyStats` 里的 `downloads` 表查询只作兜底，否则迁移后当日下载计数恒为 0（`downloads` 不再写入）。
-- **config**：删 `captcha_*`；加 `pow_enabled`(默认 true)/`pow_algorithm`("PBKDF2-SHA256")/`pow_cost`(500)/`pow_key_length`(32)/`pow_difficulty`(14)/`pow_challenge_ttl`("2m")/`pow_hmac_secret`(空→启动随机生成，挑战内存态无需持久)/`download_token_ttl`("5m")。
+- **config**：删 `captcha_*`；加 `pow_enabled`(默认 true)/`pow_algorithm`("PBKDF2-SHA256")/`pow_cost`(500)/`pow_key_length`(32)/`pow_difficulty`(14)/`pow_challenge_ttl`("2m")/`pow_hmac_secret`(空→`pow.NewManager` 创建时随机生成 32 字节——空密钥的 HMAC 任何人可算，配合内存中未过期 nonce 可伪造 difficulty=0 挑战绕过 PoW，2026-09-05 修复)/`download_token_ttl`("5m")。
 - **前端**（`frontend/src`）：`globalConfig.api.endpoints` 用 `powConfig:'/pow/config'` + `downloadChallenge:'/downloads/challenge'` + `downloadAuthorize:'/downloads/authorize'`；`api.js` 移除 `getCaptchaConfig`/`verifyDownload`，新增 `getPowConfig`/`createDownloadChallenge`/`authorizeDownload`。`VersionList.vue`/`FilesView.vue` 的 `handleDownload`：`powConfig.enabled` 时路由 `/verify?file=...`（VerifyView 现在是 PoW 求解页：Web Crypto PBKDF2 → challenge → solve → authorize → `/download-started?token=`），否则 `prepareDownload`（CLI/API 路径无 PoW）。`DownloadStartedView` 不变（landing 契约未变）。构建：`cd frontend && pnpm build` → `web/default/`（git 跟踪，改完必须重新构建）。
 - **PoW derivedKey 编码坑**：客户端（浏览器/CLI）`derivedKey` 用**无填充** base64url，服务端 `verifySolution` 须用 `base64.RawURLEncoding.DecodeString(strings.TrimRight(derivedKey,"="))` 解码后与重算字节做 `ConstantTimeCompare`，不要用带填充的 `URLEncoding.EncodeToString` 直接比字符串。
 - **DATETIME 读取坑**：modernc.org/sqlite 把 DATETIME 列读回时解析为 time.Time 再以 RFC3339 回传给 `Scan(&string)`。`download_authz.isExpired` 用 `parseAuthzTime` 多布局兼容（AuthzTimeFormat + RFC3339*）。DB 内 SQL `expires_at > ?` 字符串比较仍按 "2006-01-02 15:04:05" 文本字典序工作。

@@ -63,7 +63,6 @@ export function ConfigPage() {
         ...config,
         github_token: '',
         admin_password: '',
-        captcha_secret_key: '',
       })
       setTotpSecret(config.two_factor_secret || '')
     } catch {
@@ -84,7 +83,6 @@ export function ConfigPage() {
           ...config,
           github_token: '',
           admin_password: '',
-          captcha_secret_key: '',
         })
         setTotpSecret(config.two_factor_secret || '')
       } catch {
@@ -107,28 +105,26 @@ export function ConfigPage() {
   }, [form])
 
   const handleSave = async (
-    values: Config & { admin_password?: string; github_token?: string; captcha_secret_key?: string }
+    values: Config & { admin_password?: string; github_token?: string }
   ) => {
     setSaving(true)
     try {
       const updateData: Record<string, unknown> = { ...values }
 
+      // 秘密字段留空时不上送，后端保持原值
       if (!values.admin_password) {
         delete updateData.admin_password
       }
       if (!values.github_token) {
         delete updateData.github_token
       }
-      if (!values.captcha_secret_key) {
-        delete updateData.captcha_secret_key
-      }
 
       await updateConfig(updateData)
       message.success('保存成功，部分配置可能需要重启生效')
       loadConfig()
     } catch (error: unknown) {
-      const err = error as { response?: { data?: string } }
-      message.error(err.response?.data || '保存失败')
+      const err = error as { response?: { data?: { error?: { message?: string } } }; message?: string }
+      message.error(err.response?.data?.error?.message || err.message || '保存失败')
     } finally {
       setSaving(false)
     }
@@ -247,8 +243,8 @@ export function ConfigPage() {
         <Form.Item name="server_port" label="服务端口" rules={[{ required: true }]}>
           <InputNumber min={1} max={65535} style={{ width: isMobile ? '100%' : 200 }} />
         </Form.Item>
-        <Form.Item name="check_cron" label="检查频率 (Cron)" rules={[{ required: true }]} extra="例如: @every 10m">
-          <Input placeholder="@every 10m" />
+        <Form.Item name="check_cron" label="检查频率 (Cron)" rules={[{ required: true }]} extra="5 段 cron 表达式（分钟粒度），例如: */10 * * * *">
+          <Input placeholder="*/10 * * * *" />
         </Form.Item>
         <Form.Item name="storage_path" label="存储路径" rules={[{ required: true }]}>
           <Input />
@@ -322,15 +318,50 @@ export function ConfigPage() {
         </Form.Item>
       </Card>
 
-      <Card title="腾讯云验证码" style={{ marginBottom: 16 }}>
-        <Form.Item name="captcha_enabled" label="启用下载验证" valuePropName="checked">
+      <Card title="下载验证 (PoW)" style={{ marginBottom: 16 }}>
+        <Form.Item
+          name="pow_enabled"
+          label="启用 PoW 下载验证"
+          valuePropName="checked"
+          extra="浏览器下载前自动完成工作量证明验证，替代传统验证码；关闭后无门控"
+        >
           <Switch />
         </Form.Item>
-        <Form.Item name="captcha_app_id" label="Captcha ID">
-          <Input placeholder="极验验证码 Captcha ID" />
+        <Form.Item
+          name="pow_difficulty"
+          label="PoW 难度 (前导零位数)"
+          extra="越大求解越慢，默认 6；修改后立即生效（进行中的验证作废）"
+        >
+          <InputNumber min={1} max={30} style={{ width: isMobile ? '100%' : 200 }} />
         </Form.Item>
-        <Form.Item name="captcha_secret_key" label="Private Key" extra="留空不修改">
-          <Input.Password placeholder="服务端验证密钥" />
+        <Form.Item name="pow_cost" label="PBKDF2 迭代数">
+          <InputNumber min={100} max={100000} style={{ width: isMobile ? '100%' : 200 }} />
+        </Form.Item>
+        <Form.Item name="pow_challenge_ttl" label="挑战有效期" extra="Go duration 格式，例如 10m、2m">
+          <Input placeholder="10m" style={{ width: isMobile ? '100%' : 200 }} />
+        </Form.Item>
+        <Form.Item name="download_token_ttl" label="下载令牌有效期" extra="Go duration 格式；也是多段下载/断点续传的复用窗口">
+          <Input placeholder="10m" style={{ width: isMobile ? '100%' : 200 }} />
+        </Form.Item>
+      </Card>
+
+      <Card title="防刷墙与申诉" style={{ marginBottom: 16 }}>
+        <Form.Item
+          name="traffic_limit_gb"
+          label="单 IP 每日流量上限 (GB)"
+          extra="0 表示不限制；超限自动封禁当日 IP"
+        >
+          <InputNumber min={0} style={{ width: isMobile ? '100%' : 200 }} />
+        </Form.Item>
+        <Form.Item
+          name="external_blacklist_url"
+          label="外部黑名单 URL"
+          extra="扫描时自动同步该 URL 的 IP 列表；留空禁用"
+        >
+          <Input placeholder="https://example.com/blacklist.txt" />
+        </Form.Item>
+        <Form.Item name="appeal_contact" label="误封申诉联系方式" extra="展示在封禁提示页中">
+          <Input placeholder="例如：QQ群 123456" />
         </Form.Item>
       </Card>
 
@@ -395,9 +426,9 @@ export function ConfigPage() {
         <Form.Item
           name="self_update_check_cron"
           label="自动检查频率 (Cron)"
-          extra="留空则仅手动检查。例如: @every 1h"
+          extra="5 段 cron 表达式；留空则仅手动检查。例如: 0 */6 * * *"
         >
-          <Input placeholder="@every 1h" />
+          <Input placeholder="0 */6 * * *" />
         </Form.Item>
         <Form.Item name="self_update_auto_restart" label="更新后自动重启" valuePropName="checked">
           <Switch />
