@@ -4,9 +4,11 @@
 
 ## 构建与命令
 
-- 前端自身约定用 **npm**（`package.json` 的 `_packageManager: npm`、README 命令都是 npm）：`npm install`、`npm run dev`、`npm run build`、`npm run typecheck`（`vue-tsc --noEmit`）、`npm run test`（vitest run，tests/ 目录 25 个用例）、`npm run preview`。git 只提交 `pnpm-lock.yaml`（npm 的 package-lock.json 被 .gitignore），CI 与 Docker 走 pnpm——两种包管理器都可用，别因 lockfile 冲突卡住。
-- **`npm run build` 输出到仓库根 `../web/default/`**（`vite.config.js` 的 `outDir: '../web/default'` + `emptyOutDir`）。该目录被 git 跟踪且内嵌进 Go 二进制（启动时释放）。改前端代码后必须重新构建，否则线上不生效；构建会重写 git 跟踪的产物文件。
-- 改 Vue/TS 后先跑 `npm run typecheck`，再跑 `npm run test`。测试框架是 vitest（`vitest.config.js` 与 vite.config 同步维护 `@` 别名与 `__APP_VERSION__` define），用例在 `tests/*.test.js`（node 环境，依赖 window 的模块在测试里 stub）。
+- **环境限制（Termux / Android）**：系统 `/tmp` 目录为只读，不可写入文件。如需临时文件操作，必须使用 Termux 下的 `/data/data/com.termux/files/usr/tmp/` 或 `<项目根>/tmp/` 目录。在智能体工具中执行命令时若因动态链接器隔离报错，需在宿主免沙盒环境下执行。
+- **包管理器**：前端自身约定用 **npm**（`package.json` 的 `_packageManager: npm`、README 命令都是 npm）：`npm install`、`npm run dev`、`npm run build`、`npm run typecheck`、`npm run test`、`npm run preview`。git 只跟踪 `pnpm-lock.yaml`（`package-lock.json` 被 .gitignore，禁止提交），CI 与 Docker 统一用 pnpm 10.12.4。
+- **质量检查顺序**：修改代码后必须严格按顺序运行验证：`npm run typecheck`（`vue-tsc --noEmit`）→ `npm run test`（vitest run，tests/ 目录 5 套测试共 25 个用例全部通过）→ `npm run build`。
+- **聚焦单测**：运行指定测试文件使用 `npm run test -- tests/<name>.test.js`（例如 `npm run test -- tests/pow.test.js`）。
+- **`npm run build` 输出到仓库根 `../web/default/`**（`vite.config.js` 的 `outDir: '../web/default'` + `emptyOutDir`）。该目录被 git 跟踪且内嵌进 Go 二进制（启动时释放）。改完前端代码后必须重新构建，否则线上不生效；构建会重写 git 跟踪的产物文件。
 
 ## 目录与入口
 
@@ -15,7 +17,8 @@
 - `src/lib/` 其他模块：`pow.js`（PoW base64url 编解码 + leadingZeroBits，VerifyView 引用）、`format.js`（formatSize + compareVersionDesc 数值语义版本降序，VersionList/FilesView 共用）、`returnTarget.js`（外部跳转域名白名单）、`composables/useSeoMeta.js`（title/description/og/twitter meta 统一写入，各视图接入）。
 - `src/services/api.js` — axios 单例 + **v2 信封解包拦截器**：响应含 `data`/`meta` 且 `error === null` 时才把 `response.data.data` 提升为 `response.data`（业务错误信封原样保留）。因此导出的 API 函数返回的是**内层数据而非 axios 响应**，别重复 `.data.data`。
 - `src/views/` 页面 + `src/components/`（含 `layout/`、`ui/`，ui 是 Radix Vue + Tailwind 的 shadcn 风格组件）。
-- `src/assets/world.json` — 约 1MB 的静态世界数据。
+- `public/geo/china.json` — 中国省级行政区 GeoJSON 地图数据（供统计页全国分布图渲染）。
+- `src/lib/chinaRegion.js` — 访问/下载分布地域归一化工具：将后端统计混杂的省级简称（如“广东”）与地级市（如“广州市”）映射归并至 34 个一级行政区 GeoJSON 全称（台湾省视同省份，海外/未命中返回 null 不上图）。
 - `src/style.css` + `tailwind.config.js` — 全局样式/主题。
 
 ## 代码约定
@@ -31,9 +34,11 @@
 - `DownloadStartedView.vue`：最终落点。landing 返回单个同源 `download_url`（`/download/...?token=...`）；触发自动下载前先对路径发 **HEAD 请求**探测可达性（5s 超时 AbortController），失败则不自动跳转、仅保留手动按钮。**HEAD 探测不带 token**（后端对 HEAD 分支不校验、不记账、不写事件）；不要改成带 token 的 GET/Range 探测。「返回上一页/前往网站」的外部跳转经 `lib/returnTarget.js` 白名单校验（site.url + 友链域名），防开放重定向（2026-09-05 加）。
 - `globalConfig.download.sourceLabels` 用于 `prepareDownload` 的 `source` 上报（home/files/verify）。
 
-## 样式
+## 样式与设计规范
 
-- 低饱和度配色/纯色优先，避免高饱和渐变；减少 emoji（用户约定）。主题色由 `globalConfig.theme` 定义（默认 `monochrome`），localStorage key `theme-color`。
+- **配色与质感**：严格遵循低饱和度纯色优先准则。主色统一采用 Zinc 系列等低饱和度冷灰，禁止使用 `#8b5cf6` 等高饱和紫蓝渐变或蓝粉/红橘高饱和过渡；界面尽可能减少 Emoji 的使用，保持工程化稳重风格。
+- **主题色与深浅色**：多主题色配置已被完全移除，全站统一基于 `.dark` class 实现深浅色切换。显示模式三态持久化在 `displayMode` key（`light` / `dark` / `system`）；实际生效的布尔深色值同步维护在 `darkMode` key（`vueuse-color-scheme`，供 ECharts 等组件感知）。
+- **轮询节流与防火墙协同**：`StatsView.vue` 的实时带宽（`/api/v2/bandwidth`）采用 5 秒轮询间隔（5000ms），防止多开页面触发站点级每分钟 300 次的 IP 频率限制；并通过监听 `visibilitychange` 事件在页面不可见（标签页切出/最小化）时主动暂停定时器，重回前台时立即触发一次刷新并恢复轮询。
 
 ## 设计体系（2026-09-02 起与 LogShare.CN 同步）
 

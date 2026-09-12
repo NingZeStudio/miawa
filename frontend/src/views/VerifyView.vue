@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   PhCheckCircle as CheckCircle,
@@ -81,6 +81,7 @@ const isPowSupported = () => {
 // ---- 主流程 ----
 
 const init = async () => {
+  cancelled = false
   isLoading.value = true
   progress.value = 0
   errorMessage.value = ''
@@ -159,6 +160,15 @@ const directDownload = () => {
     window.location.href = `/download/${filePath.value}`
   }
 }
+
+watch(
+  () => route.query.file,
+  (newFile, oldFile) => {
+    if (newFile && newFile !== oldFile) {
+      init()
+    }
+  }
+)
 
 onMounted(() => {
   init()

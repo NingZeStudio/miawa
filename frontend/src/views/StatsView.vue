@@ -233,10 +233,10 @@ const chinaMapOption = computed(() => {
       type: 'map',
       map: 'china',
       roam: false,
-      // 视图中心对准大陆腹地并放大：大陆撑满容器，南海诸岛自然下沉到容器
-      // 底缘之外（含南海的整幅 bbox 默认适配会把大陆压扁畸变）
-      center: [104.5, 36],
-      zoom: 1.42,
+      aspectScale: 0.75,
+      // 保持完整版图，居中自适应容器，避免南海诸岛、新疆、黑龙江等被裁剪
+      layoutCenter: ['50%', '50%'],
+      layoutSize: '98%',
       selectedMode: false,
       data: provinceStats.value,
       emphasis: {
@@ -280,8 +280,8 @@ const roseOption = computed(() => {
       name: '省份占比',
       type: 'pie',
       roseType: 'area',
-      radius: ['16%', '78%'],
-      center: ['50%', '52%'],
+      radius: ['15%', '70%'],
+      center: ['50%', '50%'],
       data: main.map((p, i) => ({
         name: p.name,
         value: p.value,
@@ -741,22 +741,22 @@ onUnmounted(() => {
               按国内访问来源省份统计，海外合并为「海外」，城市级访问并入所属省份展示。
             </p>
             <div class="mt-4">
-              <div v-if="chinaMapReady" class="h-[420px] w-full">
+              <div v-if="chinaMapReady" class="h-[360px] sm:h-[420px] w-full">
                 <VChart class="chart" :option="chinaMapOption" autoresize />
               </div>
-              <div v-else class="flex h-[420px] items-center justify-center">
+              <div v-else class="flex h-[360px] sm:h-[420px] items-center justify-center">
                 <Skeleton class="h-full w-full rounded" />
               </div>
             </div>
           </div>
 
-          <!-- 右列：标题与左列对齐，说明文字右对齐多行小字，玫瑰图与地图等高 -->
+          <!-- 右列：标题与左列对齐，说明文字移动端左对齐/桌面端右对齐，玫瑰图移动端定高、桌面端等高 -->
           <div class="flex min-w-0 flex-col">
             <div class="flex items-center gap-2 text-base font-semibold">
               <ChartPie weight="duotone" class="h-4 w-4 text-teal-500" />
               省份访问占比
             </div>
-            <div class="mt-1 space-y-0.5 text-right">
+            <div class="mt-1 space-y-0.5 text-left sm:text-right">
               <p class="text-xs leading-relaxed text-muted-foreground">
                 扇区面积对应访问量占比，展示全部省级行政区样本。
               </p>
@@ -767,7 +767,7 @@ onUnmounted(() => {
                 地图仅示意访问热度，不代表任何领土立场；海外及未知来源不在图中展示。
               </p>
             </div>
-            <div class="mt-4 min-h-0 flex-1">
+            <div class="mt-4 h-[360px] sm:h-[420px] lg:h-auto lg:min-h-0 lg:flex-1">
               <VChart class="chart" :option="roseOption" autoresize />
             </div>
           </div>

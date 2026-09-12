@@ -19,34 +19,15 @@ function App() {
           <Routes>
             <Route path="/" element={<LoginPage />} />
             <Route
-              path="/config"
               element={
                 <PrivateRoute>
                   <AdminLayout />
                 </PrivateRoute>
               }
             >
-              <Route index element={<ConfigPage />} />
-            </Route>
-            <Route
-              path="/files"
-              element={
-                <PrivateRoute>
-                  <AdminLayout />
-                </PrivateRoute>
-              }
-            >
-              <Route index element={<FilesPage />} />
-            </Route>
-            <Route
-              path="/blacklist"
-              element={
-                <PrivateRoute>
-                  <AdminLayout />
-                </PrivateRoute>
-              }
-            >
-              <Route index element={<BlacklistPage />} />
+              <Route path="/config" element={<ConfigPage />} />
+              <Route path="/files" element={<FilesPage />} />
+              <Route path="/blacklist" element={<BlacklistPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

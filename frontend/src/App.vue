@@ -12,8 +12,8 @@ const route = useRoute()
   <DefaultLayout>
     <RouterView v-slot="{ Component }">
       <Transition name="page" mode="out-in">
-        <!-- fullPath：同 path 不同 query（如 /verify?file=a → b）也要重建组件 -->
-        <component :is="Component" :key="route.fullPath" />
+        <!-- 优先采用 route.meta.key（如 files 系列路由保持一致），避免内部钻取时页面被整页销毁重建 -->
+        <component :is="Component" :key="route.meta.key || route.path" />
       </Transition>
     </RouterView>
   </DefaultLayout>

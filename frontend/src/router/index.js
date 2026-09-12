@@ -23,27 +23,31 @@ const router = createRouter({
       path: '/files',
       name: 'files',
       component: () => import('@/views/FilesView.vue'),
-      meta: { title: T('文件列表') }
+      meta: { title: T('文件列表'), key: 'files' }
     },
     {
       path: '/files/:launcherName',
       name: 'files-launcher',
       component: () => import('@/views/FilesView.vue'),
       props: true,
-      meta: { title: T('文件列表') }
+      meta: { title: T('文件列表'), key: 'files' }
     },
     {
       path: '/files/:launcherName/:versionName',
       name: 'files-version',
       component: () => import('@/views/FilesView.vue'),
       props: true,
-      meta: { title: T('文件列表') }
+      meta: { title: T('文件列表'), key: 'files' }
     },
     {
       path: '/stats',
       name: 'stats',
       component: () => import('@/views/StatsView.vue'),
       meta: { title: T('统计信息') }
+    },
+    {
+      path: '/status',
+      redirect: '/stats'
     },
     {
       // 不能用 /api：dev/preview 的 vite 代理把 /api/* 转发到线上后端，SPA 路由会被劫持
@@ -67,7 +71,7 @@ const router = createRouter({
     {
        path: '/:pathMatch(.*)*',
        name: 'not-found',
-       component: () => import('@/views/HomeView.vue'),
+       component: () => import('@/views/NotFoundView.vue'),
        meta: { title: T('页面未找到') }
     }
   ]

@@ -16,8 +16,15 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [totpEnabled, setTotpEnabled] = useState(false)
   const navigate = useNavigate()
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
   const setToken = useAuthStore((state) => state.setToken)
   const { isMobile } = useBreakpoint()
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/config', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
 
   useEffect(() => {
     const checkTOTP = async () => {

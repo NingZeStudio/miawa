@@ -161,7 +161,7 @@ onUnmounted(() => {
     </header>
 
     <!-- [&>*]:min-w-0：flex 子项默认 min-width:auto，长内容（如文档代码块）会把页面撑出横向滚动 -->
-    <main class="mx-auto flex w-[calc(100%-2rem)] max-w-6xl flex-1 flex-col gap-6 pt-6 lg:pt-8 [&>*]:min-w-0">
+    <main class="mx-auto flex w-[calc(100%-2rem)] max-w-6xl flex-1 flex-col gap-6 pt-6 lg:pt-8 pb-12 lg:pb-16 [&>*]:min-w-0">
       <slot />
     </main>
     <Footer />

@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDownloadLanding } from '@/services/api'
 import { globalConfig } from '@/lib/globalConfig'
-import { isAllowedExternalTarget } from '@/lib/returnTarget'
+import { isAllowedExternalTarget, isSameOriginUrl } from '@/lib/returnTarget'
 import { useSeoMeta } from '@/composables/useSeoMeta'
 
 useSeoMeta(
@@ -81,24 +81,50 @@ const triggerDownload = async () => {
   }
 }
 
-// 返回来源站点（集成站）：外部 referrer / return_url 均需命中白名单（防开放重定向），
-// 否则回退首页；不 router.back() 回验证页。
-const leaveToOrigin = () => {
-  const referrer = document.referrer
-  if (referrer && isAllowedExternalTarget(referrer)) {
-    window.location.href = referrer
+// 跳转到目标地址：站外需命中白名单（防开放重定向），站内走 SPA 路由；非法或缺失回退首页
+const navigateToTarget = (url) => {
+  if (!url) {
+    router.push('/')
     return
   }
-  const returnUrl = route.query.return_url || fileInfo.value?.return_url
-  if (returnUrl && isAllowedExternalTarget(returnUrl)) {
-    window.location.href = returnUrl
+  if (isAllowedExternalTarget(url)) {
+    window.location.href = url
+    return
+  }
+  if (isSameOriginUrl(url)) {
+    try {
+      const parsed = new URL(url, window.location.origin)
+      router.push(parsed.pathname + parsed.search + parsed.hash)
+      return
+    } catch {
+      // 容错继续
+    }
+  }
+  if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('//')) {
+    router.push(url)
     return
   }
   router.push('/')
 }
 
-const goBack = leaveToOrigin
-const goToWebsite = leaveToOrigin
+const goBack = () => {
+  const returnUrl = route.query.return_url || fileInfo.value?.return_url
+  if (returnUrl) {
+    navigateToTarget(returnUrl)
+    return
+  }
+  const referrer = document.referrer
+  if (referrer && isAllowedExternalTarget(referrer)) {
+    window.location.href = referrer
+    return
+  }
+  router.push('/')
+}
+
+const goToWebsite = () => {
+  const returnUrl = fileInfo.value?.return_url || route.query.return_url
+  navigateToTarget(returnUrl)
+}
 
 onMounted(() => {
   loadLandingInfo()

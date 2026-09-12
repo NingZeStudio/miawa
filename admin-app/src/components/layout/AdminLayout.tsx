@@ -8,6 +8,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MenuOutlined,
+  HomeOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -105,14 +106,20 @@ export function AdminLayout() {
   )
 
   const logoContent = (
-    <div
+    <a
+      href="/"
+      target="_blank"
+      rel="noreferrer"
       style={{
         height: 64,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         borderBottom: '1px solid #f0f0f0',
+        textDecoration: 'none',
+        color: 'inherit',
       }}
+      title="前往前台首页"
     >
       <span
         style={{
@@ -124,7 +131,7 @@ export function AdminLayout() {
       >
         {collapsed && !isMobile ? 'LM' : 'Lemwood Mirror'}
       </span>
-    </div>
+    </a>
   )
 
   const headerBar = (
@@ -155,11 +162,23 @@ export function AdminLayout() {
           <span style={{ fontSize: 12, color: '#8c8c8c', lineHeight: '18px' }}>Lemwood Mirror 后台管理</span>
         )}
       </Space>
-      {!isMobile && (
-        <Badge dot color="green">
-          <span style={{ fontSize: 13, color: '#595959' }}>在线</span>
-        </Badge>
-      )}
+      <Space size="middle">
+        <Button
+          type="text"
+          icon={<HomeOutlined />}
+          href="/"
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: '#595959' }}
+        >
+          {!isMobile && '前往前台'}
+        </Button>
+        {!isMobile && (
+          <Badge dot color="green">
+            <span style={{ fontSize: 13, color: '#595959' }}>在线</span>
+          </Badge>
+        )}
+      </Space>
     </div>
   )
 

@@ -47,9 +47,8 @@ const route = useRoute()
 const router = useRouter()
 const currentPath = ref([])
 
-// 浏览会话内缓存 /launchers + /latest + /pow/config：路由深度导航会因
-// key=path 变化重建组件，避免每次都全量重拉三接口（配合后端 ETag 语义）。
-const dataCache = { launchers: null, latest: null, pow: null }
+// 浏览会话内缓存 /launchers + /latest + /pow/config：避免重复全量拉取
+const dataCache = window.__FILES_DATA_CACHE__ || (window.__FILES_DATA_CACHE__ = { launchers: null, latest: null, pow: null })
 
 const loadData = async () => {
   if (dataCache.launchers && dataCache.latest && dataCache.pow) {
@@ -68,18 +67,20 @@ const loadData = async () => {
     ])
 
     const sortedLaunchers = {}
-    Object.keys(statusRes.data)
-      .sort()
-      .forEach((key) => {
-        sortedLaunchers[key] = statusRes.data[key].sort(compareVersionDesc)
-      })
+    if (statusRes.data && typeof statusRes.data === 'object') {
+      Object.keys(statusRes.data)
+        .sort()
+        .forEach((key) => {
+          sortedLaunchers[key] = (statusRes.data[key] || []).sort(compareVersionDesc)
+        })
+    }
 
     dataCache.launchers = sortedLaunchers
-    dataCache.latest = latestRes.data
-    dataCache.pow = powRes.data
+    dataCache.latest = latestRes.data || {}
+    dataCache.pow = powRes.data || { enabled: false }
     launchers.value = sortedLaunchers
-    latestData.value = latestRes.data
-    powConfig.value = powRes.data
+    latestData.value = latestRes.data || {}
+    powConfig.value = powRes.data || { enabled: false }
   } catch (error) {
     console.error(error)
   } finally {
@@ -160,38 +161,48 @@ const handleDownload = async (item) => {
   router.push(`/verify?file=${encodeURIComponent(filePath)}&return_url=${encodeURIComponent(returnUrl)}&source=${encodeURIComponent(source)}`)
 }
 
+const findLauncherKey = (name) => {
+  if (!name || !launchers.value) return null
+  if (launchers.value[name]) return name
+  const lower = String(name).toLowerCase()
+  return Object.keys(launchers.value).find((k) => k.toLowerCase() === lower) || null
+}
+
 const navigateTo = (item, type) => {
   if (type === 'launcher') {
-    currentPath.value = [
-      { name: getLauncherDisplayName(item.id), id: item.id, type: 'launcher', displayName: item.id }
-    ]
+    router.push({ name: 'files-launcher', params: { launcherName: item.id } })
   } else if (type === 'version') {
-    currentPath.value.push({ name: item.name, id: item.id, type: 'version', data: item.data })
+    const launcherId = currentPath.value[0]?.id || props.launcherName
+    if (launcherId) {
+      router.push({
+        name: 'files-version',
+        params: { launcherName: launcherId, versionName: item.id }
+      })
+    }
   }
-  updateUrl()
 }
 
 const navigateUp = () => {
-  currentPath.value.pop()
-  updateUrl()
+  if (currentPath.value.length >= 2) {
+    const launcherId = currentPath.value[0]?.id || props.launcherName
+    router.push({
+      name: 'files-launcher',
+      params: { launcherName: launcherId }
+    })
+  } else {
+    router.push({ name: 'files' })
+  }
 }
 
 const navigateToBreadcrumb = (index) => {
   if (index === -1) {
-    currentPath.value = []
     router.push({ name: 'files' })
-  } else {
-    currentPath.value = currentPath.value.slice(0, index + 1)
-    updateUrl()
-  }
-}
-
-const updateUrl = () => {
-  if (currentPath.value.length === 0) {
-    router.push({ name: 'files' })
-  } else if (currentPath.value.length === 1) {
-    router.push({ name: 'files-launcher', params: { launcherName: currentPath.value[0].id } })
-  } else if (currentPath.value.length >= 2) {
+  } else if (index === 0 && currentPath.value[0]) {
+    router.push({
+      name: 'files-launcher',
+      params: { launcherName: currentPath.value[0].id }
+    })
+  } else if (index === 1 && currentPath.value[0] && currentPath.value[1]) {
     router.push({
       name: 'files-version',
       params: {
@@ -259,39 +270,55 @@ const currentItems = computed(() => {
   return []
 })
 
-onMounted(async () => {
-  await loadData()
-  applyFilesMeta()
+const syncPathFromRoute = () => {
+  if (!props.launcherName) {
+    currentPath.value = []
+    applyFilesMeta()
+    return
+  }
 
-  if (props.launcherName && launchers.value[props.launcherName]) {
-    currentPath.value = [
-      {
-        name: getLauncherDisplayName(props.launcherName),
-        id: props.launcherName,
-        type: 'launcher',
-        displayName: props.launcherName
-      }
-    ]
+  const launcherKey = findLauncherKey(props.launcherName)
+  if (!launcherKey || !launchers.value[launcherKey]) {
+    currentPath.value = []
+    applyFilesMeta()
+    return
+  }
 
-    if (props.versionName) {
-      const versions = launchers.value[props.launcherName] || []
-      const versionData = versions.find((v) => (v.tag_name || v.name) === props.versionName)
+  const path = [
+    {
+      name: getLauncherDisplayName(launcherKey),
+      id: launcherKey,
+      type: 'launcher',
+      displayName: launcherKey
+    }
+  ]
 
-      if (versionData) {
-        currentPath.value.push({
-          name: props.versionName,
-          id: props.versionName,
-          type: 'version',
-          data: versionData
-        })
-      }
+  if (props.versionName) {
+    const versions = launchers.value[launcherKey] || []
+    const versionData = versions.find((v) => (v.tag_name || v.name) === props.versionName)
+
+    if (versionData) {
+      path.push({
+        name: props.versionName,
+        id: props.versionName,
+        type: 'version',
+        data: versionData
+      })
     }
   }
+
+  currentPath.value = path
+  applyFilesMeta()
+}
+
+watch([() => props.launcherName, () => props.versionName, () => launchers.value], () => {
+  syncPathFromRoute()
 })
 
-watch([() => props.launcherName, () => props.versionName, currentPath], () => {
-  applyFilesMeta()
-}, { deep: true })
+onMounted(async () => {
+  await loadData()
+  syncPathFromRoute()
+})
 
 const nameFull = globalConfig.site.nameFull
 
@@ -315,8 +342,8 @@ const applyFilesMeta = () => {
 </script>
 
 <template>
-  <!-- 宽度与 API 文档页一致：max-w-4xl 居中 -->
   <div class="mx-auto w-full max-w-4xl min-w-0 space-y-4">
+    <!-- 宽度与 API 文档页一致：max-w-4xl 居中 -->
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div class="space-y-1">
         <h1 class="text-3xl font-bold tracking-tight">文件浏览</h1>
