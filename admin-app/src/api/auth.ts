@@ -3,7 +3,7 @@ import { removeStoredItem } from '@/lib/storage'
 import type { LoginRequest, LoginResponse, TOTPStatus } from '@/types'
 
 export async function login(data: LoginRequest): Promise<LoginResponse> {
-  const response = await api.post<LoginResponse>('/login', data)
+  const response = await api.post<LoginResponse>('/auth/login', data)
   return response.data
 }
 
@@ -12,6 +12,6 @@ export async function getTOTPStatus(): Promise<TOTPStatus> {
   return response.data
 }
 
-export async function logout(): Promise<void> {
+export function logout(): void {
   removeStoredItem('admin_token')
 }

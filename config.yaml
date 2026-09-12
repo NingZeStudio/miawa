@@ -53,6 +53,14 @@ ban_record_file: banned_ips.json
 external_blacklist_url: https://bcr.pbh-btn.ghorg.ghostchu-services.top/combine/all.txt
 appeal_contact: QQ群 https://qm.qq.com/q/FOGt99aayY
 
+# 防火墙：请求频率限制（对全部 HTTP 请求生效，违规累计达到阈值自动封禁）
+rate_limit_enabled: true
+rate_limit_per_minute: 300
+rate_limit_ban_threshold: 3
+# IP/网段白名单（支持单 IP 与 CIDR，如 192.168.1.1、10.0.0.0/8），
+# 命中白名单的客户端豁免频率限制、外部黑名单与流量自动封禁
+firewall_whitelist:
+
 mysql_host: ""
 mysql_port: 3306
 mysql_user: ""
@@ -82,8 +90,8 @@ self_update_auto_restart: false
 #   - release: 仅同步 Release 资源
 #   - clone / all: 已废弃（Git 镜像功能已移除），仅为兼容旧配置保留
 launchers:
-  - name: mirror
-    source_url: https://github.com/ningzestudio/lemwood-mirror
+  - name: demo
+    source_url: https://github.com/octocat/Hello-World
     mode: release
-    include_prerelease: true
-    max_versions: 0
+    include_prerelease: false
+    max_versions: 1

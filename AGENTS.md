@@ -137,4 +137,17 @@
 
 ## 嵌入前端释放
 
-- `embedded_files.go`：`//go:embed all:web/default all:web/admin`。启动时 `assets.SyncEmbedded` 把内嵌前端释放到项目根 `web/default`、`web/admin`，**每次启动都释放**（内容相同的文件跳过写入减 IO，无 manifest 短路，确保前端随二进制即时生效）。`deprecatedBundles` 列表里的历史遗留目录（如 `web/default_v2`）会被整体删除。
+- `embedded_files.go`：`//go:embed all:web/default all:web/admin`。启动时 `assets.SyncEmbedded` 把内嵌前端释放到项目根 `web/default`、`web/admin`，**每次启动都释放**（内容相同的文件跳过写入减 IO，无 manifest短路，确保前端随二进制即时生效）。`deprecatedBundles` 列表里的历史遗留目录（如 `web/default_v2`）会被整体删除。
+
+## 2026-09-12 管理端前端全面重构（ElementsPlus-Admin-Template）
+
+- **技术栈全面统一**：废弃并彻底移除历史遗留的 React 19 + Ant Design 架构，基于 `NingZeStudio/ElementsPlus-Admin-Template` 重新开发管理后台。技术栈统一为 Vue 3.5 + TypeScript + Vite 6 + Tailwind CSS + Element Plus 2.9 + Pinia 2.3 + Lucide 图标库。
+- **视觉风格规范**：全站采用低饱和度 Zinc 灰色系与 Shadcn-like 微阴影、轻边框设计风格，支持暗黑模式无缝平滑切换，避免高饱和度渐变色。
+- **模块与页面完整重构**：
+  - `src/views/login/index.vue`：用户名/密码登录，自动检测服务端 TOTP 状态并支持 6 位动态验证码校验。
+  - `src/views/dashboard/index.vue`：系统概览、服务版本、防火墙状态快照与快捷功能导航。
+  - `src/views/config/index.vue`：全配置可视化编辑（基础设置、GitHub Token/代理、管理员凭据、TOTP 两步验证与二维码、PoW 门控难度与耗时、防刷限流、防火墙频率限制与白名单、高级下载加速、自更新状态监控与手动检查/应用/重启、启动器源动态增删与更新触发）。
+  - `src/views/files/index.vue`：目录树面包屑导航、文件上传（直接上传至当前路径）、文件下载、删除确认及移动端响应式卡片视图。
+  - `src/views/blacklist/index.vue`：顶部实时防火墙状态卡片、来源统计与快速过滤切换（全部/手动/外部/自动）、防抖关键词搜索、IP/CIDR 正则校验弹窗添加、解除封禁确认与服务端分页。
+- **构建输出保持一致**：`admin-app/vite.config.ts` 输出目标 `../web/admin`（base: `/admin/`），与 Go 单体内嵌资源机制无缝整合。
+

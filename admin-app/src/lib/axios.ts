@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { message } from 'antd'
+import { ElMessage } from 'element-plus'
 import { getStoredItem, removeStoredItem } from '@/lib/storage'
 
 const api = axios.create({
@@ -35,8 +35,8 @@ api.interceptors.response.use(
     }
     if (error.response?.status === 401) {
       removeStoredItem('admin_token')
-      window.location.href = '/admin/'
-      message.error('会话已过期，请重新登录')
+      window.location.href = '/admin/login'
+      ElMessage.error('会话已过期，请重新登录')
     }
     return Promise.reject(error)
   }

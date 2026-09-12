@@ -123,17 +123,31 @@ go run ./cmd/mirror
 |------|------|--------|------|
 | `download_token_ttl` | duration | `10m` | 下载授权令牌有效期 |
 
-### 管理员
+### 管理员与后台认证
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `admin_enabled` | bool | — | 启用后台管理 |
-| `admin_user` | string | — | 管理员用户名，为空时自动禁用管理后台 |
-| `admin_password` | string | — | bcrypt 哈希密码，生成方式：`htpasswd -bnBC 14 "" <password> \| tr -d ':\n'` |
-| `admin_max_retries` | int | `10` | 登录失败上限，超限 IP 锁定 |
+| `admin_enabled` | bool | `true` | 启用后台管理（设为 false 禁用管理端及 `/api/v2/admin/*` 端点） |
+| `admin_user` | string | `"admin"` | 管理员用户名，为空时自动禁用管理后台 |
+| `admin_password` | string | `"$2a$04$..."` | bcrypt 哈希密码（默认初始账号 `admin`，密码 `admin123`） |
+| `admin_max_retries` | int | `10` | 登录失败上限，超限锁定客户端 IP |
 | `admin_lock_duration` | int | `120` | IP 锁定时间（分钟） |
-| `two_factor_enabled` | bool | — | 启用 TOTP 两步验证 |
-| `two_factor_secret` | string | — | TOTP 共享密钥 |
+| `two_factor_enabled` | bool | `false` | 启用 TOTP 两步验证（开启后登录须输入 6 位动态验证码） |
+| `two_factor_secret` | string | `""` | TOTP 共享密钥（Base32 格式） |
+
+#### 账号密码修改与 TOTP 配置途径
+
+1. **后台可视化直接修改（推荐）**：
+   - 登录后台（默认地址 `http://<ip>:8080/admin/`，初始账号 `admin`，密码 `admin123`）。
+   - 前往 **「配置编辑」** 页面：
+     - 在「管理后台设置」卡片中输入新账号或新密码（留空则不修改原密码），点击底部保存即时生效。
+     - 在「二次验证 (TOTP)」卡片中开启开关，点击“生成新密钥”，使用手机身份验证器（Microsoft / Google Authenticator）扫描自动生成的二维码绑定，保存配置即可生效。
+2. **通过配置文件修改**：
+   - 在 `config.yaml` 中修改 `admin_user` 和 `admin_password`。密码采用 bcrypt 哈希存储，可通过以下命令生成：
+     ```bash
+     htpasswd -bnBC 14 "" <your-new-password> | tr -d ':\n'
+     ```
+   - 启用 TOTP 需配置 `two_factor_enabled: true` 并将 Base32 密钥写入 `two_factor_secret`。
 
 ### 流量控制与封禁
 
@@ -237,6 +251,35 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+```
+
+### Systemd 守护进程部署
+
+创建 `/etc/systemd/system/lemwood-mirror.service`：
+
+```ini
+[Unit]
+Description=Lemwood Mirror Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/lemwood-mirror
+ExecStart=/opt/lemwood-mirror/mirror
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动与自启：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now lemwood-mirror
 ```
 
 ### 健康检查
