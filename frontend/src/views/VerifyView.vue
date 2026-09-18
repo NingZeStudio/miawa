@@ -6,7 +6,6 @@ import {
   PhHeart as Heart,
   PhCircleNotch as Loader2,
   PhArrowClockwise as RefreshCw,
-  PhShieldCheck as ShieldCheck,
   PhUsers as Users,
   PhXCircle as XCircle
 } from '@phosphor-icons/vue'
@@ -215,10 +214,26 @@ onUnmounted(() => {
   <div class="flex min-h-[calc(100vh-10rem)] flex-col items-center justify-center gap-4 py-8 supports-[height:100dvh]:min-h-[calc(100dvh-10rem)]">
     <Card class="w-full max-w-lg">
       <CardHeader class="items-center text-center">
-        <div class="mb-2 rounded-full bg-primary/10 p-3 text-primary">
-          <ShieldCheck weight="duotone" class="h-8 w-8" />
+        <div class="mb-2 flex items-center justify-center gap-3">
+          <div
+            v-if="verifyStatus === 'error'"
+            class="rounded-full bg-destructive/10 p-2 text-destructive"
+            aria-label="验证失败"
+          >
+            <XCircle weight="duotone" class="h-8 w-8" />
+          </div>
+          <div
+            v-else-if="verifyStatus === 'success'"
+            class="rounded-full bg-emerald-500/10 p-2 text-emerald-500"
+            aria-label="验证成功"
+          >
+            <CheckCircle weight="duotone" class="h-8 w-8" />
+          </div>
+          <div v-else class="rounded-full bg-primary/10 p-2 text-primary" aria-label="验证进行中">
+            <Loader2 weight="duotone" class="h-8 w-8 animate-spin" />
+          </div>
+          <CardTitle class="text-2xl">安全验证</CardTitle>
         </div>
-        <CardTitle class="text-2xl">安全验证</CardTitle>
         <CardDescription>正在确认你是真实访客，无需任何操作</CardDescription>
       </CardHeader>
 
