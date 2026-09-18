@@ -705,6 +705,10 @@ func (s *State) Routes(mux *http.ServeMux) {
 		if disposition != "" {
 			w.Header().Set("Content-Disposition", disposition)
 		}
+		// 完整性校验：响应头附带 SHA-256，供下载端校验（带缓存，冷路径才读盘）
+		if sum, hashErr := sumSHA256Cached(cleanPath, info); hashErr == nil {
+			w.Header().Set("X-Content-SHA256", sum)
+		}
 
 		http.ServeFile(countingWriter, r, cleanPath)
 
@@ -766,6 +770,8 @@ func (s *State) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v2/downloads/challenge", s.handleV2DownloadChallenge)
 	mux.HandleFunc("/api/v2/downloads/authorize", s.handleV2DownloadAuthorize)
 	mux.HandleFunc("/api/v2/pow/config", s.handleV2PowConfig)
+	// 文件完整性：SHA-256 校验值（纯新增端点，不影响既有 v2 响应结构）
+	mux.HandleFunc("/api/v2/files/integrity", s.handleV2FileIntegrity)
 
 	// 认证 + 扫描（v2 admin 中间件，返回信封格式错误）
 	mux.Handle("/api/v2/auth/login", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.handleV2Login)))

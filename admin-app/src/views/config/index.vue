@@ -11,7 +11,7 @@
           配置编辑
         </h2>
         <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          管理 Lemwood Mirror 服务的核心网络、安全、启动器源及自更新参数
+          管理 柠泽资源站（miawa） 服务的核心网络、安全、启动器源及自更新参数
         </p>
       </div>
 

@@ -10,7 +10,7 @@
           />
         </div>
         <h1 class="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-          Lemwood Mirror
+          柠泽资源站（miawa）
         </h1>
         <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
           管理控制台身份认证
@@ -99,7 +99,7 @@
 
       <!-- 底部版权与前台链接 -->
       <div class="text-center mt-6 text-xs text-zinc-400 space-x-3">
-        <span>Lemwood Mirror</span>
+        <span>柠泽资源站（miawa）</span>
         <span>•</span>
         <a
           href="/"

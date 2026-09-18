@@ -10,7 +10,7 @@ import {
   PhUsers as Users,
   PhXCircle as XCircle
 } from '@phosphor-icons/vue'
-import { getPowConfig, createDownloadChallenge, authorizeDownload } from '@/services/api'
+import { getPowConfig, createDownloadChallenge, authorizeDownload, getFileIntegrity } from '@/services/api'
 import { base64urlDecode, base64urlEncode, leadingZeroBits } from '@/lib/pow'
 import { globalConfig } from '@/lib/globalConfig'
 import Button from '@/components/ui/Button.vue'
@@ -30,6 +30,10 @@ const progress = ref(0)
 const statusText = ref('正在获取验证挑战…')
 const errorMessage = ref('')
 const verifyStatus = ref('pending') // pending | error
+
+const fileHash = ref('')
+const fileSize = ref(0)
+const githubUrl = globalConfig.links.githubOrg
 
 let cancelled = false
 
@@ -87,6 +91,8 @@ const init = async () => {
   errorMessage.value = ''
   verifyStatus.value = 'pending'
   filePath.value = route.query.file || ''
+  fileHash.value = ''
+  fileSize.value = 0
 
   if (!filePath.value) {
     errorMessage.value = '缺少文件参数，请从来源页面重新发起下载'
@@ -94,6 +100,9 @@ const init = async () => {
     isLoading.value = false
     return
   }
+
+  // 并行加载文件哈希（失败不影响验证主流程）
+  loadIntegrity()
 
   if (!isPowSupported()) {
     errorMessage.value =
@@ -149,6 +158,29 @@ const init = async () => {
     verifyStatus.value = 'error'
     isLoading.value = false
   }
+}
+
+// 文件完整性信息：并行加载，失败不影响验证主流程
+const loadIntegrity = async () => {
+  try {
+    const res = await getFileIntegrity(filePath.value)
+    fileHash.value = res.data?.sha256 || ''
+    fileSize.value = res.data?.size || 0
+  } catch {
+    // 哈希展示失败不影响验证与下载
+  }
+}
+
+const formatSize = (bytes) => {
+  if (!bytes) return ''
+  const units = ['B', 'KB', 'MB', 'GB']
+  let v = bytes
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`
 }
 
 const retry = () => {
@@ -232,7 +264,21 @@ onUnmounted(() => {
       </CardContent>
 
       <CardFooter v-if="filePath" class="border-t text-xs text-muted-foreground">
-        <span class="break-all">目标文件：{{ filePath.split('/').pop() }}</span>
+        <div class="w-full space-y-1.5">
+          <p class="break-all">
+            目标文件：{{ filePath.split('/').pop() }}<span v-if="fileSize">（{{ formatSize(fileSize) }}）</span>
+          </p>
+          <p v-if="fileHash" class="break-all font-mono text-[11px] leading-relaxed">SHA-256：{{ fileHash }}</p>
+          <a
+            v-if="fileHash"
+            :href="githubUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            GitHub 项目仓库 →
+          </a>
+        </div>
       </CardFooter>
     </Card>
 
