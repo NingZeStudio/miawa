@@ -94,12 +94,13 @@ func NewScanner(cfg *config.Config, base string, s *server.State, ghc *gh.Client
 
 func buildSelfUpdateConfig(cfg *config.Config) selfupdate.Config {
 	return selfupdate.Config{
-		Enabled:       cfg.SelfUpdateEnabled,
-		RepoURL:       cfg.SelfUpdateRepoURL,
-		Channel:       cfg.SelfUpdateChannel,
-		AutoRestart:   cfg.SelfUpdateAutoRestart,
-		ProxyURL:      cfg.ProxyURL,
-		AssetProxyURL: cfg.AssetProxyURL,
+		Enabled:            cfg.SelfUpdateEnabled,
+		RepoURL:            cfg.SelfUpdateRepoURL,
+		Channel:            cfg.SelfUpdateChannel,
+		AutoRestart:        cfg.SelfUpdateAutoRestart,
+		ProxyURL:           cfg.ProxyURL,
+		AssetProxyURL:      cfg.AssetProxyURL,
+		InsecureSkipVerify: cfg.TLSSkipVerify,
 	}
 }
 
@@ -161,7 +162,7 @@ func (sc *Scanner) scanLauncher(lcfg config.LauncherConfig) {
 			}
 		}
 
-		downer := downloader.NewDownloader(sc.cfg.DownloadTimeoutMinutes, sc.cfg.ConcurrentDownloads)
+		downer := downloader.NewDownloader(sc.cfg.DownloadTimeoutMinutes, sc.cfg.ConcurrentDownloads, sc.cfg.TLSSkipVerify)
 		// 每次扫描都从 GitHub API 拉取该 release 全部资产的 SHA-256 摘要（name → hex64），
 		// 用于下载后本地校验并写入 index.json 元数据；旧资产无 digest 时仅记录本地哈希。
 		digests, derr := sc.ghc.GetReleaseAssetDigests(ctx, owner, repo, version)
@@ -202,7 +203,7 @@ func (sc *Scanner) ScanAll() {
 	if sc.cfg.ExternalBlacklistURL != "" {
 		log.Printf("[黑名单同步] 开始同步外部黑名单: %s", sc.cfg.ExternalBlacklistURL)
 		go func() {
-			if err := blacklist.SyncExternalBlacklist(sc.cfg.ExternalBlacklistURL); err != nil {
+			if err := blacklist.SyncExternalBlacklist(sc.cfg.ExternalBlacklistURL, sc.cfg.TLSSkipVerify); err != nil {
 				log.Printf("[黑名单同步] 同步外部黑名单失败: %v", err)
 			}
 		}()
@@ -314,7 +315,7 @@ func main() {
 		}
 	}
 
-	ghc := gh.NewClient(cfg.EffectiveGitHubToken(), cfg.ProxyURL)
+	ghc := gh.NewClient(cfg.EffectiveGitHubToken(), cfg.ProxyURL, cfg.TLSSkipVerify)
 	selfUpdateManager := selfupdate.NewManager(ghc, Version, resolveBinaryPath(), buildSelfUpdateConfig(cfg))
 	s.SetSelfUpdateManager(selfUpdateManager)
 

@@ -8,10 +8,10 @@ import (
 )
 
 type FileNode struct {
-	Name     string      `json:"name"`
-	IsDir    bool        `json:"is_dir"`
-	Size     int64       `json:"size"`
-	Children []FileNode  `json:"children,omitempty"`
+	Name     string     `json:"name"`
+	IsDir    bool       `json:"is_dir"`
+	Size     int64      `json:"size"`
+	Children []FileNode `json:"children,omitempty"`
 }
 
 // ListTree 递归列出从 base/path 开始的目录，并具有防止逃逸的安全性。

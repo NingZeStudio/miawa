@@ -67,7 +67,7 @@ func TestDownloadLatestWritesSHA256(t *testing.T) {
 
 	dest := t.TempDir()
 	rel := newTestRelease(srv.URL+"/asset.txt", len(content))
-	d := NewDownloader(1, 2)
+	d := NewDownloader(1, 2, false)
 	if _, err := d.DownloadLatest(context.Background(), "demo", dest, "", "", false, "", rel, "", 0, "http://test.example", true,
 		map[string]string{"asset.txt": hex.EncodeToString(sum[:])}); err != nil {
 		t.Fatalf("DownloadLatest: %v", err)
@@ -101,7 +101,7 @@ func TestDownloadLatestExistingFileVerifiedWithoutRedownload(t *testing.T) {
 	}
 
 	rel := newTestRelease(srv.URL+"/asset.txt", len(content))
-	d := NewDownloader(1, 2)
+	d := NewDownloader(1, 2, false)
 	if _, err := d.DownloadLatest(context.Background(), "demo", dest, "", "", false, "", rel, "", 0, "http://test.example", true,
 		map[string]string{"asset.txt": hex.EncodeToString(sum[:])}); err != nil {
 		t.Fatalf("DownloadLatest: %v", err)
@@ -136,7 +136,7 @@ func TestDownloadLatestRedownloadsOnDigestMismatch(t *testing.T) {
 	}
 
 	rel := newTestRelease(srv.URL+"/asset.txt", len(good))
-	d := NewDownloader(1, 2)
+	d := NewDownloader(1, 2, false)
 	if _, err := d.DownloadLatest(context.Background(), "demo", dest, "", "", false, "", rel, "", 0, "http://test.example", true,
 		map[string]string{"asset.txt": hex.EncodeToString(sum[:])}); err != nil {
 		t.Fatalf("DownloadLatest: %v", err)
@@ -163,7 +163,7 @@ func TestDownloadLatestKeepsLocalHashOnPersistentMismatch(t *testing.T) {
 
 	dest := t.TempDir()
 	rel := newTestRelease(srv.URL+"/asset.txt", len(good))
-	d := NewDownloader(1, 2)
+	d := NewDownloader(1, 2, false)
 	if _, err := d.DownloadLatest(context.Background(), "demo", dest, "", "", false, "", rel, "", 0, "http://test.example", true,
 		map[string]string{"asset.txt": hex.EncodeToString(goodSum[:])}); err != nil {
 		t.Fatalf("DownloadLatest 不应报错: %v", err)
@@ -185,7 +185,7 @@ func TestDownloadLatestWithoutDigestRecordsLocalHash(t *testing.T) {
 
 	dest := t.TempDir()
 	rel := newTestRelease(srv.URL+"/asset.txt", len(content))
-	d := NewDownloader(1, 2)
+	d := NewDownloader(1, 2, false)
 	if _, err := d.DownloadLatest(context.Background(), "demo", dest, "", "", false, "", rel, "", 0, "http://test.example", true, nil); err != nil {
 		t.Fatalf("DownloadLatest: %v", err)
 	}

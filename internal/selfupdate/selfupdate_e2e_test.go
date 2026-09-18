@@ -135,7 +135,7 @@ func newE2EManager(t *testing.T, currentVersion string, upstream *fakeUpstream) 
 		AutoRestart:   false,
 		AssetProxyURL: server.URL + "/mirror/", // 镜像前缀：下载路由到假上游
 	}
-	m := NewManager(gh.NewClientWithBaseURL("", "", server.URL+"/"), currentVersion, target, cfg)
+	m := NewManager(gh.NewClientWithBaseURL("", "", server.URL+"/", false), currentVersion, target, cfg)
 	return m, upstream, target
 }
 
@@ -258,7 +258,7 @@ func TestSelfUpdateCheckErrorSurfaces(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "mirror")
 	_ = os.WriteFile(target, elfBinary("old"), 0o755)
 	m := NewManager(
-		gh.NewClientWithBaseURL("", "", server.URL+"/"),
+		gh.NewClientWithBaseURL("", "", server.URL+"/", false),
 		"1.0.0",
 		target,
 		Config{Enabled: true, RepoURL: "https://github.com/testowner/testrepo", Channel: string(ChannelRelease)},

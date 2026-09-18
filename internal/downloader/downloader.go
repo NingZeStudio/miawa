@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -39,18 +40,34 @@ type ReleaseAssetSimple struct {
 }
 
 type Downloader struct {
-	httpClient *http.Client
-	semaphore  chan struct{}
+	httpClient         *http.Client
+	semaphore          chan struct{}
+	insecureSkipVerify bool
 }
 
-func NewDownloader(timeoutMinutes, concurrentDownloads int) *Downloader {
+func NewDownloader(timeoutMinutes, concurrentDownloads int, insecureSkipVerify bool) *Downloader {
 	if concurrentDownloads <= 0 {
 		concurrentDownloads = 3 // 如果无效，默认为 3
 	}
-	return &Downloader{
-		httpClient: &http.Client{Timeout: time.Duration(timeoutMinutes) * time.Minute},
-		semaphore:  make(chan struct{}, concurrentDownloads),
+	var transport http.RoundTripper = http.DefaultTransport
+	if insecureSkipVerify {
+		transport = insecureTransport()
 	}
+	return &Downloader{
+		httpClient:         &http.Client{Timeout: time.Duration(timeoutMinutes) * time.Minute, Transport: transport},
+		semaphore:          make(chan struct{}, concurrentDownloads),
+		insecureSkipVerify: insecureSkipVerify,
+	}
+}
+
+// insecureTransport 返回跳过 TLS 证书校验的传输层（由 tls_skip_verify 配置显式开启）。
+func insecureTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	if t.TLSClientConfig == nil {
+		t.TLSClientConfig = &tls.Config{}
+	}
+	t.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // 由 tls_skip_verify 配置显式开启
+	return t
 }
 
 func (d *Downloader) DownloadLatest(ctx context.Context, launcher string, destBase string, proxyURL string, assetProxyURL string, xgetEnabled bool, xgetDomain string, rel *github.RepositoryRelease, serverAddress string, serverPort int, downloadUrlBase string, isLatest bool, assetDigests map[string]string) (string, error) {
@@ -116,14 +133,18 @@ func (d *Downloader) DownloadLatest(ctx context.Context, launcher string, destBa
 			return "", fmt.Errorf("解析代理URL失败: %w", err)
 		}
 		// 为代理创建新的客户端，因为默认客户端可能是共享的
+		transport := &http.Transport{
+			Proxy:               http.ProxyURL(proxy),
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 5,
+			IdleConnTimeout:     90 * time.Second,
+		}
+		if d.insecureSkipVerify {
+			transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // 由 tls_skip_verify 配置显式开启
+		}
 		client = &http.Client{
-			Timeout: d.httpClient.Timeout,
-			Transport: &http.Transport{
-				Proxy:               http.ProxyURL(proxy),
-				MaxIdleConns:        10,
-				MaxIdleConnsPerHost: 5,
-				IdleConnTimeout:     90 * time.Second,
-			},
+			Timeout:   d.httpClient.Timeout,
+			Transport: transport,
 		}
 	}
 
