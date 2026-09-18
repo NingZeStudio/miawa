@@ -162,7 +162,14 @@ func (sc *Scanner) scanLauncher(lcfg config.LauncherConfig) {
 		}
 
 		downer := downloader.NewDownloader(sc.cfg.DownloadTimeoutMinutes, sc.cfg.ConcurrentDownloads)
-		infoPath, err := downer.DownloadLatest(ctx, lcfg.Name, sc.base, sc.cfg.ProxyURL, sc.cfg.AssetProxyURL, sc.cfg.XgetEnabled, sc.cfg.XgetDomain, rel, sc.cfg.ServerAddress, sc.cfg.ServerPort, sc.cfg.DownloadUrlBase, isLatest)
+		// 每次扫描都从 GitHub API 拉取该 release 全部资产的 SHA-256 摘要（name → hex64），
+		// 用于下载后本地校验并写入 index.json 元数据；旧资产无 digest 时仅记录本地哈希。
+		digests, derr := sc.ghc.GetReleaseAssetDigests(ctx, owner, repo, version)
+		if derr != nil {
+			log.Printf("%s: 获取 GitHub 资产摘要失败（本次跳过远程校验）: %v", lcfg.Name, derr)
+			digests = nil
+		}
+		infoPath, err := downer.DownloadLatest(ctx, lcfg.Name, sc.base, sc.cfg.ProxyURL, sc.cfg.AssetProxyURL, sc.cfg.XgetEnabled, sc.cfg.XgetDomain, rel, sc.cfg.ServerAddress, sc.cfg.ServerPort, sc.cfg.DownloadUrlBase, isLatest, digests)
 		if err != nil {
 			log.Printf("%s: 下载/检查失败: %v", lcfg.Name, err)
 			continue

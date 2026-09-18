@@ -3,6 +3,8 @@ package downloader
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,9 +32,10 @@ type ReleaseInfo struct {
 }
 
 type ReleaseAssetSimple struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
-	Size int    `json:"size"`
+	Name   string `json:"name"`
+	URL    string `json:"url"`
+	Size   int    `json:"size"`
+	SHA256 string `json:"sha256,omitempty"`
 }
 
 type Downloader struct {
@@ -50,7 +53,7 @@ func NewDownloader(timeoutMinutes, concurrentDownloads int) *Downloader {
 	}
 }
 
-func (d *Downloader) DownloadLatest(ctx context.Context, launcher string, destBase string, proxyURL string, assetProxyURL string, xgetEnabled bool, xgetDomain string, rel *github.RepositoryRelease, serverAddress string, serverPort int, downloadUrlBase string, isLatest bool) (string, error) {
+func (d *Downloader) DownloadLatest(ctx context.Context, launcher string, destBase string, proxyURL string, assetProxyURL string, xgetEnabled bool, xgetDomain string, rel *github.RepositoryRelease, serverAddress string, serverPort int, downloadUrlBase string, isLatest bool, assetDigests map[string]string) (string, error) {
 	if rel == nil {
 		return "", errors.New("release 为空")
 	}
@@ -126,19 +129,21 @@ func (d *Downloader) DownloadLatest(ctx context.Context, launcher string, destBa
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(rel.Assets))
+	hashes := make([]string, len(rel.Assets))
 
-	for _, asset := range rel.Assets {
+	for i, asset := range rel.Assets {
 		wg.Add(1)
-		go func(asset *github.ReleaseAsset) {
+		go func(i int, asset *github.ReleaseAsset) {
 			defer wg.Done()
 			d.semaphore <- struct{}{}
 			defer func() { <-d.semaphore }()
 
-			err := d.downloadAsset(ctx, client, asset, dir, assetProxyURL, xgetEnabled, xgetDomain)
+			hash, err := d.ensureAssetHashed(ctx, client, asset, dir, assetProxyURL, xgetEnabled, xgetDomain, assetDigests[asset.GetName()])
 			if err != nil {
 				errCh <- err
 			}
-		}(asset)
+			hashes[i] = hash
+		}(i, asset)
 	}
 
 	wg.Wait()
@@ -148,6 +153,11 @@ func (d *Downloader) DownloadLatest(ctx context.Context, launcher string, destBa
 		if err != nil {
 			return "", err
 		}
+	}
+
+	// 元数据与实际落盘文件保持一致：index.json 内写入每个资产的 SHA-256
+	for i := range info.Assets {
+		info.Assets[i].SHA256 = hashes[i]
 	}
 
 	// 所有资产下载完成后再写 index.json 并生效，
@@ -219,6 +229,72 @@ func getPublicIP() (string, error) {
 
 func isSafePathComponent(name string) bool {
 	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, `/\\`)
+}
+
+// ensureAssetHashed 确保资产文件就位并返回其 SHA-256（十六进制）。
+// expectHex 非空时（来自 GitHub API 的 digest 字段），本地文件每次扫描都会与之比对，
+// 不一致则重新下载校验；两次仍不一致仅告警并返回本地实际哈希，保证元数据与所服务文件一致。
+func (d *Downloader) ensureAssetHashed(ctx context.Context, client *http.Client, asset *github.ReleaseAsset, dir, assetProxyURL string, xgetEnabled bool, xgetDomain string, expectHex string) (string, error) {
+	name := asset.GetName()
+	outfile := filepath.Join(dir, name)
+
+	if stat, err := os.Stat(outfile); err == nil {
+		if stat.Size() == int64(asset.GetSize()) {
+			hash, herr := sha256FileHex(outfile)
+			if herr != nil {
+				return "", herr
+			}
+			if expectHex == "" || hash == expectHex {
+				return hash, nil
+			}
+			log.Printf("[hash] %s 本地文件与 GitHub digest 不一致，重新下载", name)
+			if rerr := os.Remove(outfile); rerr != nil && !os.IsNotExist(rerr) {
+				return "", rerr
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		if attempt > 1 {
+			// 重试前移除上次下载的可疑文件，避免 downloadAsset 按大小跳过
+			if err := os.Remove(outfile); err != nil && !os.IsNotExist(err) {
+				return "", err
+			}
+		}
+		if err := d.downloadAsset(ctx, client, asset, dir, assetProxyURL, xgetEnabled, xgetDomain); err != nil {
+			return "", err
+		}
+		if _, err := os.Stat(outfile); err != nil {
+			// 无下载链接被跳过等情况：与旧行为一致，不算失败
+			return "", nil
+		}
+		hash, err := sha256FileHex(outfile)
+		if err != nil {
+			return "", err
+		}
+		if expectHex == "" || hash == expectHex {
+			return hash, nil
+		}
+		log.Printf("[hash] 资源 %s 第 %d/2 次下载校验未通过 (本地 %s / GitHub %s)", name, attempt, hash, expectHex)
+	}
+	// 两次都不匹配：返回本地实际哈希（元数据必须与所服务文件一致）
+	return sha256FileHex(outfile)
+}
+
+// sha256FileHex 流式计算文件 SHA-256，返回十六进制字符串。
+func sha256FileHex(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (d *Downloader) downloadAsset(ctx context.Context, client *http.Client, asset *github.ReleaseAsset, dir, assetProxyURL string, xgetEnabled bool, xgetDomain string) error {
