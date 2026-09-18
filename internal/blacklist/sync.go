@@ -2,6 +2,7 @@ package blacklist
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"lemwood_mirror/internal/db"
@@ -25,7 +26,17 @@ func init() {
 	externalIPs = make(map[string]bool)
 }
 
-func SyncExternalBlacklist(url string) error {
+// insecureTransport 返回跳过 TLS 证书校验的传输层（由 tls_skip_verify 配置显式开启）。
+func insecureTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	if t.TLSClientConfig == nil {
+		t.TLSClientConfig = &tls.Config{}
+	}
+	t.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // 由 tls_skip_verify 配置显式开启
+	return t
+}
+
+func SyncExternalBlacklist(url string, insecureSkipVerify bool) error {
 	if url == "" {
 		return nil
 	}
@@ -33,8 +44,13 @@ func SyncExternalBlacklist(url string) error {
 	syncMu.Lock()
 	defer syncMu.Unlock()
 
+	var transport http.RoundTripper = http.DefaultTransport
+	if insecureSkipVerify {
+		transport = insecureTransport()
+	}
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout:   30 * time.Second,
+		Transport: transport,
 	}
 
 	resp, err := client.Get(url)

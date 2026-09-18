@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"lemwood_mirror/internal/db"
 	"lemwood_mirror/internal/firewall"
-	"io"
 	"log"
 	"math"
 	"os"
@@ -18,19 +18,19 @@ import (
 )
 
 type Tracker struct {
-	limitGB       int64
-	banRecordFile string
-	appealContact string
-	fileMutex     sync.Mutex
-	banMutex      sync.Mutex
-	pendingMutex  sync.Mutex
-	pendingBytes  map[string]int64
-	storagePath   string
-	syncChan      chan struct{} // 用于异步触发文件同步
-	ctx           context.Context
-	cancel        context.CancelFunc
-	recordTrafficFunc   func(string, int64) error
-	getDailyTrafficFunc func(string) (int64, error)
+	limitGB              int64
+	banRecordFile        string
+	appealContact        string
+	fileMutex            sync.Mutex
+	banMutex             sync.Mutex
+	pendingMutex         sync.Mutex
+	pendingBytes         map[string]int64
+	storagePath          string
+	syncChan             chan struct{} // 用于异步触发文件同步
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	recordTrafficFunc    func(string, int64) error
+	getDailyTrafficFunc  func(string) (int64, error)
 	getTrafficOnDateFunc func(string, string) (int64, error)
 }
 
@@ -39,23 +39,23 @@ var defaultTracker *Tracker
 func InitTracker(limitGB int, banRecordFile, appealContact, storagePath string) {
 	defaultTracker = newTracker(limitGB, banRecordFile, appealContact, storagePath,
 		func(string, int64) error { return nil }, // served 字节现由 download_events 承载，不再写聚合表
-		db.GetDailyServedByIPFromEventsToday, // 防刷墙按 IP 当日 served 读事件表
-		db.GetDailyServedByIPFromEvents) // 封禁记录文件的按日流量也取自事件表
+		db.GetDailyServedByIPFromEventsToday,     // 防刷墙按 IP 当日 served 读事件表
+		db.GetDailyServedByIPFromEvents)          // 封禁记录文件的按日流量也取自事件表
 }
 
 func newTracker(limitGB int, banRecordFile, appealContact, storagePath string, recordTrafficFunc func(string, int64) error, getDailyTrafficFunc func(string) (int64, error), getTrafficOnDateFunc func(string, string) (int64, error)) *Tracker {
 	ctx, cancel := context.WithCancel(context.Background())
 	tracker := &Tracker{
-		limitGB:       int64(limitGB) * 1024 * 1024 * 1024,
-		banRecordFile: banRecordFile,
-		appealContact: appealContact,
-		pendingBytes:  make(map[string]int64),
-		storagePath:   storagePath,
-		syncChan:      make(chan struct{}, 1),
-		ctx:           ctx,
-		cancel:        cancel,
-		recordTrafficFunc: recordTrafficFunc,
-		getDailyTrafficFunc: getDailyTrafficFunc,
+		limitGB:              int64(limitGB) * 1024 * 1024 * 1024,
+		banRecordFile:        banRecordFile,
+		appealContact:        appealContact,
+		pendingBytes:         make(map[string]int64),
+		storagePath:          storagePath,
+		syncChan:             make(chan struct{}, 1),
+		ctx:                  ctx,
+		cancel:               cancel,
+		recordTrafficFunc:    recordTrafficFunc,
+		getDailyTrafficFunc:  getDailyTrafficFunc,
 		getTrafficOnDateFunc: getTrafficOnDateFunc,
 	}
 	if limitGB > 0 && tracker.banRecordFile != "" {

@@ -44,3 +44,7 @@ export const prepareDownload = (filePath, returnUrl, source) =>
 export const getDownloadLanding = (token) =>
     api.get(`${globalConfig.api.endpoints.downloadLanding}?token=${encodeURIComponent(token)}`)
 
+// 文件完整性：SHA-256 校验值（PoW 验证页展示）
+export const getFileIntegrity = (filePath) =>
+    api.get(`${globalConfig.api.endpoints.fileIntegrity}?file_path=${encodeURIComponent(filePath)}`)
+

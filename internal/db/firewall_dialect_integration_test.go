@@ -24,8 +24,8 @@ func dialectIntegrationConfigs() map[string]*config.Config {
 			MySQLHost:    "127.0.0.1", MySQLPort: 33306, MySQLUser: "lemwood", MySQLPassword: "testpass", MySQLDatabase: "lemwood_fw_test",
 		},
 		"postgres": {
-			DatabaseMode:    "pgsql",
-			PostgresHost:    "127.0.0.1", PostgresPort: 55432, PostgresUser: user, PostgresDatabase: "lemwood_fw_test", PostgresSSLMode: "disable",
+			DatabaseMode: "pgsql",
+			PostgresHost: "127.0.0.1", PostgresPort: 55432, PostgresUser: user, PostgresDatabase: "lemwood_fw_test", PostgresSSLMode: "disable",
 		},
 	}
 }
@@ -120,8 +120,8 @@ func TestBlacklistPagedAcrossDialectsIntegration(t *testing.T) {
 				t.Fatalf("清空 ip_blacklist 失败: %v", err)
 			}
 			entries := []struct{ ip, source, reason string }{
-				{"192.0.2.101", "manual", "a_c"},     // 字面含下划线
-				{"192.0.2.102", "manual", "abc"},     // 若 _ 被当通配符会被 "a_c" 误命中
+				{"192.0.2.101", "manual", "a_c"}, // 字面含下划线
+				{"192.0.2.102", "manual", "abc"}, // 若 _ 被当通配符会被 "a_c" 误命中
 				{"198.51.100.7", "external", "外部同步说明"},
 				{"203.0.113.99", "local", "流量超限自动封禁"},
 			}

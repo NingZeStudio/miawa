@@ -23,7 +23,7 @@
           class="flex flex-col truncate"
         >
           <span class="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100 truncate">
-            Lemwood Mirror
+            柠泽资源站（miawa）
           </span>
           <span class="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono tracking-tighter">
             管理控制台

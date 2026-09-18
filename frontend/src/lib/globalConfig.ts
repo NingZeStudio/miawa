@@ -46,7 +46,8 @@ export const globalConfig = {
       downloadChallenge: '/downloads/challenge',
       downloadAuthorize: '/downloads/authorize',
       downloadPrepare: '/downloads/prepare',
-      downloadLanding: '/downloads/landing'
+      downloadLanding: '/downloads/landing',
+      fileIntegrity: '/files/integrity'
     }
   },
 

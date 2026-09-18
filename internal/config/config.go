@@ -42,6 +42,7 @@ proxy_url: {{ yaml .ProxyURL }}
 asset_proxy_url: {{ yaml .AssetProxyURL }}
 xget_domain: {{ yaml .XgetDomain }}
 xget_enabled: {{ .XgetEnabled }}
+tls_skip_verify: {{ .TLSSkipVerify }}
 
 admin_enabled: {{ .AdminEnabled }}
 admin_user: {{ yaml .AdminUser }}
@@ -191,6 +192,7 @@ type Config struct {
 	AssetProxyURL          string           `json:"asset_proxy_url" yaml:"asset_proxy_url"`
 	XgetDomain             string           `json:"xget_domain" yaml:"xget_domain"`
 	XgetEnabled            bool             `json:"xget_enabled" yaml:"xget_enabled"`
+	TLSSkipVerify          bool             `json:"tls_skip_verify" yaml:"tls_skip_verify"`
 	DownloadTimeoutMinutes int              `json:"download_timeout_minutes" yaml:"download_timeout_minutes"`
 	ConcurrentDownloads    int              `json:"concurrent_downloads" yaml:"concurrent_downloads"`
 	DownloadUrlBase        string           `json:"download_url_base,omitempty" yaml:"download_url_base,omitempty"`

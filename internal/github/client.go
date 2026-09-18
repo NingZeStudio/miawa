@@ -2,6 +2,7 @@ package gh
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,9 +16,10 @@ import (
 )
 
 type Client struct {
-	cli      atomic.Pointer[github.Client]
-	token    string
-	proxyURL string
+	cli                atomic.Pointer[github.Client]
+	token              string
+	proxyURL           string
+	insecureSkipVerify bool
 }
 
 type RepositoryRelease = github.RepositoryRelease
@@ -26,17 +28,17 @@ type ReleaseAsset = github.ReleaseAsset
 // NewClient 创建 GitHub API 客户端。
 // proxyURL 非空时，所有 GitHub API 请求走该代理；为空时回退到 http.DefaultTransport
 // （即尊重 HTTP_PROXY/HTTPS_PROXY 环境变量）。
-func NewClient(token, proxyURL string) *Client {
-	c := &Client{token: token, proxyURL: proxyURL}
-	c.cli.Store(buildGithubClient(token, proxyURL))
+func NewClient(token, proxyURL string, insecureSkipVerify bool) *Client {
+	c := &Client{token: token, proxyURL: proxyURL, insecureSkipVerify: insecureSkipVerify}
+	c.cli.Store(buildGithubClient(token, proxyURL, insecureSkipVerify))
 	return c
 }
 
 // NewClientWithBaseURL 创建指向自定义 API 根地址的客户端（须以 / 结尾）。
 // 仅供测试注入本地假 GitHub API 使用；代理语义与 NewClient 相同。
-func NewClientWithBaseURL(token, proxyURL, baseURL string) *Client {
-	c := &Client{token: token, proxyURL: proxyURL}
-	gc := buildGithubClient(token, proxyURL)
+func NewClientWithBaseURL(token, proxyURL, baseURL string, insecureSkipVerify bool) *Client {
+	c := &Client{token: token, proxyURL: proxyURL, insecureSkipVerify: insecureSkipVerify}
+	gc := buildGithubClient(token, proxyURL, insecureSkipVerify)
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		panic(fmt.Sprintf("github: invalid base url %q: %v", baseURL, err))
@@ -50,7 +52,7 @@ func NewClientWithBaseURL(token, proxyURL, baseURL string) *Client {
 // 安全可并发：内部用 atomic.Pointer 替换底层客户端。
 func (c *Client) SetProxy(proxyURL string) {
 	c.proxyURL = proxyURL
-	c.cli.Store(buildGithubClient(c.token, proxyURL))
+	c.cli.Store(buildGithubClient(c.token, proxyURL, c.insecureSkipVerify))
 }
 
 func (c *Client) client() *github.Client {
@@ -58,16 +60,27 @@ func (c *Client) client() *github.Client {
 }
 
 // buildGithubClient 构造一个带代理与（可选）token 的 github.Client。
-func buildGithubClient(token, proxyURL string) *github.Client {
+func buildGithubClient(token, proxyURL string, insecureSkipVerify bool) *github.Client {
 	var base http.RoundTripper = http.DefaultTransport
-	if proxyURL != "" {
-		if u, err := url.Parse(proxyURL); err == nil {
-			if t, ok := http.DefaultTransport.(*http.Transport); ok {
-				cloned := t.Clone()
-				cloned.Proxy = http.ProxyURL(u)
-				base = cloned
+	if proxyURL != "" || insecureSkipVerify {
+		var t *http.Transport
+		if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+			t = dt.Clone()
+		} else {
+			t = &http.Transport{}
+		}
+		if proxyURL != "" {
+			if u, err := url.Parse(proxyURL); err == nil {
+				t.Proxy = http.ProxyURL(u)
 			}
 		}
+		if insecureSkipVerify {
+			if t.TLSClientConfig == nil {
+				t.TLSClientConfig = &tls.Config{}
+			}
+			t.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // 由 tls_skip_verify 配置显式开启
+		}
+		base = t
 	}
 	var httpClient *http.Client
 	if token != "" {

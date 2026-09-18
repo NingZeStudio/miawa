@@ -7,7 +7,7 @@
           控制台概览
         </h2>
         <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-          Lemwood Mirror 启动器分发镜像服务运行状态与快捷导航
+          柠泽资源站（miawa） 启动器分发镜像服务运行状态与快捷导航
         </p>
       </div>
       <div class="flex items-center gap-2">

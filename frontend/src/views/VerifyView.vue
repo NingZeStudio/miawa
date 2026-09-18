@@ -6,11 +6,10 @@ import {
   PhHeart as Heart,
   PhCircleNotch as Loader2,
   PhArrowClockwise as RefreshCw,
-  PhShieldCheck as ShieldCheck,
   PhUsers as Users,
   PhXCircle as XCircle
 } from '@phosphor-icons/vue'
-import { getPowConfig, createDownloadChallenge, authorizeDownload } from '@/services/api'
+import { getPowConfig, createDownloadChallenge, authorizeDownload, getFileIntegrity } from '@/services/api'
 import { base64urlDecode, base64urlEncode, leadingZeroBits } from '@/lib/pow'
 import { globalConfig } from '@/lib/globalConfig'
 import Button from '@/components/ui/Button.vue'
@@ -30,6 +29,10 @@ const progress = ref(0)
 const statusText = ref('正在获取验证挑战…')
 const errorMessage = ref('')
 const verifyStatus = ref('pending') // pending | error
+
+const fileHash = ref('')
+const fileSize = ref(0)
+const githubUrl = globalConfig.links.githubOrg
 
 let cancelled = false
 
@@ -87,6 +90,8 @@ const init = async () => {
   errorMessage.value = ''
   verifyStatus.value = 'pending'
   filePath.value = route.query.file || ''
+  fileHash.value = ''
+  fileSize.value = 0
 
   if (!filePath.value) {
     errorMessage.value = '缺少文件参数，请从来源页面重新发起下载'
@@ -94,6 +99,9 @@ const init = async () => {
     isLoading.value = false
     return
   }
+
+  // 并行加载文件哈希（失败不影响验证主流程）
+  loadIntegrity()
 
   if (!isPowSupported()) {
     errorMessage.value =
@@ -151,6 +159,29 @@ const init = async () => {
   }
 }
 
+// 文件完整性信息：并行加载，失败不影响验证主流程
+const loadIntegrity = async () => {
+  try {
+    const res = await getFileIntegrity(filePath.value)
+    fileHash.value = res.data?.sha256 || ''
+    fileSize.value = res.data?.size || 0
+  } catch {
+    // 哈希展示失败不影响验证与下载
+  }
+}
+
+const formatSize = (bytes) => {
+  if (!bytes) return ''
+  const units = ['B', 'KB', 'MB', 'GB']
+  let v = bytes
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`
+}
+
 const retry = () => {
   init()
 }
@@ -183,10 +214,26 @@ onUnmounted(() => {
   <div class="flex min-h-[calc(100vh-10rem)] flex-col items-center justify-center gap-4 py-8 supports-[height:100dvh]:min-h-[calc(100dvh-10rem)]">
     <Card class="w-full max-w-lg">
       <CardHeader class="items-center text-center">
-        <div class="mb-2 rounded-full bg-primary/10 p-3 text-primary">
-          <ShieldCheck weight="duotone" class="h-8 w-8" />
+        <div class="mb-2 flex items-center justify-center gap-3">
+          <div
+            v-if="verifyStatus === 'error'"
+            class="rounded-full bg-destructive/10 p-2 text-destructive"
+            aria-label="验证失败"
+          >
+            <XCircle weight="duotone" class="h-8 w-8" />
+          </div>
+          <div
+            v-else-if="verifyStatus === 'success'"
+            class="rounded-full bg-emerald-500/10 p-2 text-emerald-500"
+            aria-label="验证成功"
+          >
+            <CheckCircle weight="duotone" class="h-8 w-8" />
+          </div>
+          <div v-else class="rounded-full bg-primary/10 p-2 text-primary" aria-label="验证进行中">
+            <Loader2 weight="duotone" class="h-8 w-8 animate-spin" />
+          </div>
+          <CardTitle class="text-2xl">安全验证</CardTitle>
         </div>
-        <CardTitle class="text-2xl">安全验证</CardTitle>
         <CardDescription>正在确认你是真实访客，无需任何操作</CardDescription>
       </CardHeader>
 
@@ -232,7 +279,21 @@ onUnmounted(() => {
       </CardContent>
 
       <CardFooter v-if="filePath" class="border-t text-xs text-muted-foreground">
-        <span class="break-all">目标文件：{{ filePath.split('/').pop() }}</span>
+        <div class="w-full space-y-1.5">
+          <p class="break-all">
+            目标文件：{{ filePath.split('/').pop() }}<span v-if="fileSize">（{{ formatSize(fileSize) }}）</span>
+          </p>
+          <p v-if="fileHash" class="break-all font-mono text-[11px] leading-relaxed">SHA-256：{{ fileHash }}</p>
+          <a
+            v-if="fileHash"
+            :href="githubUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            GitHub 项目仓库 →
+          </a>
+        </div>
       </CardFooter>
     </Card>
 

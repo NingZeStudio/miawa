@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -81,12 +82,13 @@ type Status struct {
 }
 
 type Config struct {
-	Enabled       bool
-	RepoURL       string
-	Channel       string
-	AutoRestart   bool
-	ProxyURL      string
-	AssetProxyURL string
+	Enabled            bool
+	RepoURL            string
+	Channel            string
+	AutoRestart        bool
+	ProxyURL           string
+	AssetProxyURL      string
+	InsecureSkipVerify bool
 }
 
 type Manager struct {
@@ -113,7 +115,7 @@ func NewManager(client *gh.Client, currentVersion, binaryPath string, cfg Config
 			Channel:        normalizeChannel(cfg.Channel),
 			CurrentVersion: normalizeVersion(currentVersion),
 		},
-		httpClient:    buildHTTPClient(cfg.ProxyURL, cfg.AssetProxyURL),
+		httpClient:    buildHTTPClient(cfg.ProxyURL, cfg.AssetProxyURL, cfg.InsecureSkipVerify),
 		assetProxyURL: cfg.AssetProxyURL,
 		autoRestart:   cfg.AutoRestart,
 	}
@@ -141,7 +143,7 @@ func looksLikeProxyURL(raw string) bool {
 	return false
 }
 
-func buildHTTPClient(proxyURL, assetProxyURL string) *http.Client {
+func buildHTTPClient(proxyURL, assetProxyURL string, insecureSkipVerify bool) *http.Client {
 	// asset_proxy_url 看起来像 HTTP 代理时优先用作下载代理；否则回退到 proxy_url。
 	proxy := ""
 	if assetProxyURL != "" && looksLikeProxyURL(assetProxyURL) {
@@ -160,6 +162,12 @@ func buildHTTPClient(proxyURL, assetProxyURL string) *http.Client {
 			transport.Proxy = http.ProxyURL(parsed)
 		}
 	}
+	if insecureSkipVerify {
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec // 由 tls_skip_verify 配置显式开启
+	}
 	return &http.Client{
 		Transport: transport,
 		Timeout:   10 * time.Minute,
@@ -172,7 +180,7 @@ func (m *Manager) UpdateConfig(cfg Config) {
 	m.status.Enabled = cfg.Enabled
 	m.status.RepoURL = effectiveRepoURL(cfg.RepoURL)
 	m.status.Channel = normalizeChannel(cfg.Channel)
-	m.httpClient = buildHTTPClient(cfg.ProxyURL, cfg.AssetProxyURL)
+	m.httpClient = buildHTTPClient(cfg.ProxyURL, cfg.AssetProxyURL, cfg.InsecureSkipVerify)
 	m.assetProxyURL = cfg.AssetProxyURL
 	m.autoRestart = cfg.AutoRestart
 	// 同步更新 GitHub API 客户端的代理，使 Check/Apply 的 API 调用也走代理。
