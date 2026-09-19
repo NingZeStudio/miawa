@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDownloadLanding } from '@/services/api'
+import { getDownloadLanding, getFileIntegrity } from '@/services/api'
 import { globalConfig } from '@/lib/globalConfig'
 import { isAllowedExternalTarget, isSameOriginUrl } from '@/lib/returnTarget'
 import { useSeoMeta } from '@/composables/useSeoMeta'
@@ -33,6 +33,32 @@ const loading = ref(true)
 const error = ref('')
 const fileInfo = ref(null)
 const downloadTriggered = ref(false)
+const fileHash = ref('')
+const fileSize = ref(0)
+
+// 文件完整性信息：并行加载，失败不影响下载主流程
+const loadIntegrity = async () => {
+  if (!fileInfo.value?.file_path) return
+  try {
+    const res = await getFileIntegrity(fileInfo.value.file_path)
+    fileHash.value = res.data?.sha256 || ''
+    fileSize.value = res.data?.size || 0
+  } catch {
+    // 哈希展示失败不影响下载
+  }
+}
+
+const formatSize = (bytes) => {
+  if (!bytes) return ''
+  const units = ['B', 'KB', 'MB', 'GB']
+  let v = bytes
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`
+}
 
 const loadLandingInfo = async () => {
   const token = route.query.token
@@ -45,6 +71,7 @@ const loadLandingInfo = async () => {
   try {
     const response = await getDownloadLanding(token)
     fileInfo.value = response.data
+    loadIntegrity()
     triggerDownload()
   } catch (err) {
     error.value = err.response?.data?.error?.message || err.message || '获取下载信息失败，凭证可能已过期'
@@ -175,6 +202,13 @@ onMounted(() => {
           <p class="text-center text-sm text-muted-foreground">
             一切就绪。部分浏览器（尤其 Android）不会自动弹出下载，<span class="font-medium text-foreground">请点击上方按钮开始下载</span>。
           </p>
+
+          <div v-if="fileHash" class="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+            <p class="break-all">
+              {{ fileInfo.file_name }}<span v-if="fileSize">（{{ formatSize(fileSize) }}）</span>
+            </p>
+            <p class="mt-1 break-all font-mono text-[11px] leading-relaxed">SHA-256：{{ fileHash }}</p>
+          </div>
 
           <div class="grid gap-2 sm:grid-cols-2">
             <Button variant="outline" @click="goBack">
