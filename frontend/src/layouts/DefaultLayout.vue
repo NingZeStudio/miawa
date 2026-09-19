@@ -11,7 +11,7 @@ import MobileNav from '@/components/layout/MobileNav.vue'
 import { isNavigationActive, navigationLinks } from '@/lib/navigation'
 import { globalConfig } from '@/lib/globalConfig'
 import { useNodeInfo } from '@/lib/nodeInfo'
-const { nodeName } = useNodeInfo()
+const { nodeName, parentNodeUrl } = useNodeInfo()
 import { setStoredItem, getStoredItem } from '@/lib/safeStorage'
 
 const route = useRoute()
@@ -101,7 +101,7 @@ onUnmounted(() => {
             />
             <span class="inline">{{ globalConfig.site.name }}</span>
             <span
-              v-if="nodeName"
+              v-if="parentNodeUrl && nodeName"
               class="ml-1 hidden rounded bg-primary/10 px-1.5 py-0.5 align-middle text-[10px] font-medium text-primary sm:inline"
             >子节点 {{ nodeName }}</span>
           </router-link>

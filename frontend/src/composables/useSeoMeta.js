@@ -2,7 +2,7 @@
 // 各视图只需声明 { title, description }，不再各自手写 DOM 查询；
 // fullTitle: true 表示 title 已含站名后缀，跳过拼接。
 // 子节点部署时标题自动追加「 · <节点名> 子节点」（nodeInfo 启动时拉取）。
-import { nodeName } from '@/lib/nodeInfo'
+import { nodeName, parentNodeUrl } from '@/lib/nodeInfo'
 
 const ensureMeta = (attr, key) => {
   const selector = `meta[${attr}="${key}"]`
@@ -17,7 +17,7 @@ const ensureMeta = (attr, key) => {
 
 export function useSeoMeta({ title, description, image, fullTitle = false }, nameFull) {
   return () => {
-    const nodeSuffix = nodeName.value ? ` · ${nodeName.value} 子节点` : ''
+    const nodeSuffix = parentNodeUrl.value && nodeName.value ? ` · ${nodeName.value} 子节点` : ''
     const finalTitle = fullTitle || !nameFull ? title + nodeSuffix : `${title} - ${nameFull}${nodeSuffix}`
     document.title = finalTitle
 
