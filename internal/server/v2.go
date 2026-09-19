@@ -24,6 +24,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -527,15 +528,56 @@ func (s *State) handleV2DownloadLanding(w http.ResponseWriter, r *http.Request) 
 	}
 
 	markNoStore(w)
-	url := buildDownloadURL(token, auth.FilePath)
+	// 带宽压力分流：主服活跃下载连接达到阈值时，把浏览器下载引导到备用节点
+	//（独立完整镜像，有自己的 PoW/token，故跳其验证页）；仅影响浏览器 landing
+	// 流，CLI/API 的 prepare + /download 直连不受影响。配置逐请求读取，
+	// 管理后台保存后即时生效。
+	if offloadBase := s.offloadURLFor(auth.FilePath); offloadBase != "" {
+		target := offloadBase + "/verify?file=" + url.QueryEscape(auth.FilePath)
+		if auth.ReturnURL != "" {
+			target += "&return_url=" + url.QueryEscape(auth.ReturnURL)
+		}
+		writeV2Success(w, r, map[string]interface{}{
+			"download_url": target,
+			"return_url":   auth.ReturnURL,
+			"source":       auth.Source,
+			"file_name":    filepath.Base(auth.FilePath),
+			"file_path":    auth.FilePath,
+			"flow":         auth.Flow,
+			"offloaded":    true,
+		}, false)
+		return
+	}
+	downloadURL := buildDownloadURL(token, auth.FilePath)
 	writeV2Success(w, r, map[string]interface{}{
-		"download_url": url,
+		"download_url": downloadURL,
 		"return_url":   auth.ReturnURL,
 		"source":       auth.Source,
 		"file_name":    filepath.Base(auth.FilePath),
 		"file_path":    auth.FilePath,
 		"flow":         auth.Flow,
 	}, false)
+}
+
+// offloadURLFor 判断该文件的 landing 是否应分流到备用节点，返回分流基准地址
+// （空串 = 走本机下载）。三个条件同时满足才分流：配置了 download_offload_url、
+// 当前活跃下载连接数达到阈值、启动器在分流名单内。名单外的启动器（备用节点
+// 未镜像的）绝不分流，避免把用户引向 404。
+func (s *State) offloadURLFor(filePath string) string {
+	cfg := s.Conf()
+	if cfg.DownloadOffloadURL == "" || cfg.DownloadOffloadActive <= 0 {
+		return ""
+	}
+	if s.bandwidth == nil || s.bandwidth.Snapshot().ActiveDownloads < int64(cfg.DownloadOffloadActive) {
+		return ""
+	}
+	launcher := strings.Split(filepath.ToSlash(filePath), "/")[0]
+	for _, name := range cfg.DownloadOffloadLaunchers {
+		if name == launcher {
+			return cfg.DownloadOffloadURL
+		}
+	}
+	return ""
 }
 
 // handleV2DownloadChallenge 创建 PoW 挑战（浏览器验证页用），信封包裹。

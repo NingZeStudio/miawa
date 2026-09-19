@@ -34,6 +34,15 @@ github_token: {{ yaml .GitHubToken }}
 # 对外下载地址基准（为空时回退到 server_address）
 download_url_base: {{ yaml .DownloadUrlBase }}
 
+# 主服带宽压力分流：活跃下载连接数达到阈值时，浏览器下载引导到备用节点验证页
+# （备用节点须为独立完整镜像；留空或阈值为 0 = 禁用；名单外的启动器不走分流）
+download_offload_url: {{ yaml .DownloadOffloadURL }}
+download_offload_active_downloads: {{ .DownloadOffloadActive }}
+download_offload_launchers:
+{{- range .DownloadOffloadLaunchers }}
+  - {{ yaml . }}
+{{- end }}
+
 # 单文件下载超时（分钟），Git 镜像同步也复用此超时
 download_timeout_minutes: {{ .DownloadTimeoutMinutes }}
 concurrent_downloads: {{ .ConcurrentDownloads }}
@@ -180,64 +189,67 @@ func ShouldSyncRelease(mode string) bool {
 }
 
 type Config struct {
-	ServerAddress          string           `json:"server_address" yaml:"server_address"`
-	ServerPort             int              `json:"server_port" yaml:"server_port"`
-	CheckCron              string           `json:"check_cron" yaml:"check_cron"`
-	StoragePath            string           `json:"storage_path" yaml:"storage_path"`
-	GitHubToken            string           `json:"github_token" yaml:"github_token"`
-	AdminUser              string           `json:"admin_user" yaml:"admin_user"`
-	AdminPassword          string           `json:"admin_password" yaml:"admin_password"`
-	AdminEnabled           bool             `json:"admin_enabled" yaml:"admin_enabled"`
-	AdminMaxRetries        int              `json:"admin_max_retries" yaml:"admin_max_retries"`
-	AdminLockDuration      int              `json:"admin_lock_duration" yaml:"admin_lock_duration"`
-	ProxyURL               string           `json:"proxy_url" yaml:"proxy_url"`
-	AssetProxyURL          string           `json:"asset_proxy_url" yaml:"asset_proxy_url"`
-	XgetDomain             string           `json:"xget_domain" yaml:"xget_domain"`
-	XgetEnabled            bool             `json:"xget_enabled" yaml:"xget_enabled"`
-	TLSSkipVerify          bool             `json:"tls_skip_verify" yaml:"tls_skip_verify"`
-	DownloadTimeoutMinutes int              `json:"download_timeout_minutes" yaml:"download_timeout_minutes"`
-	ConcurrentDownloads    int              `json:"concurrent_downloads" yaml:"concurrent_downloads"`
-	DownloadUrlBase        string           `json:"download_url_base,omitempty" yaml:"download_url_base,omitempty"`
-	TwoFactorEnabled       bool             `json:"two_factor_enabled" yaml:"two_factor_enabled"`
-	TwoFactorSecret        string           `json:"two_factor_secret" yaml:"two_factor_secret"`
-	PowEnabled             bool             `json:"pow_enabled" yaml:"pow_enabled"`
-	PowAlgorithm           string           `json:"pow_algorithm" yaml:"pow_algorithm"`
-	PowCost                int              `json:"pow_cost" yaml:"pow_cost"`
-	PowKeyLength           int              `json:"pow_key_length" yaml:"pow_key_length"`
-	PowDifficulty          int              `json:"pow_difficulty" yaml:"pow_difficulty"`
-	PowChallengeTTL        string           `json:"pow_challenge_ttl" yaml:"pow_challenge_ttl"`
-	PowHMACSecret          string           `json:"pow_hmac_secret,omitempty" yaml:"pow_hmac_secret,omitempty"`
-	DownloadTokenTTL       string           `json:"download_token_ttl,omitempty" yaml:"download_token_ttl,omitempty"`
-	Launchers              []LauncherConfig `json:"launchers" yaml:"launchers"`
-	TrafficLimitGB         int              `json:"traffic_limit_gb" yaml:"traffic_limit_gb"`
-	BandwidthLimitMbps     int              `json:"bandwidth_limit_mbps" yaml:"bandwidth_limit_mbps"`
-	BanRecordFile          string           `json:"ban_record_file" yaml:"ban_record_file"`
-	ExternalBlacklistURL   string           `json:"external_blacklist_url" yaml:"external_blacklist_url"`
-	AppealContact          string           `json:"appeal_contact" yaml:"appeal_contact"`
-	RateLimitEnabled       bool             `json:"rate_limit_enabled" yaml:"rate_limit_enabled"`
-	RateLimitPerMinute     int              `json:"rate_limit_per_minute" yaml:"rate_limit_per_minute"`
-	RateLimitBanThreshold  int              `json:"rate_limit_ban_threshold" yaml:"rate_limit_ban_threshold"`
-	FirewallWhitelist      []string         `json:"firewall_whitelist" yaml:"firewall_whitelist"`
-	MySQLHost              string           `json:"mysql_host" yaml:"mysql_host"`
-	MySQLPort              int              `json:"mysql_port" yaml:"mysql_port"`
-	MySQLUser              string           `json:"mysql_user" yaml:"mysql_user"`
-	MySQLPassword          string           `json:"mysql_password" yaml:"mysql_password"`
-	MySQLDatabase          string           `json:"mysql_database" yaml:"mysql_database"`
-	MySQLMigration         bool             `json:"mysql_migration" yaml:"mysql_migration"`
-	DatabaseMode           string           `json:"database_mode" yaml:"database_mode"`
-	PostgresHost           string           `json:"postgres_host" yaml:"postgres_host"`
-	PostgresPort           int              `json:"postgres_port" yaml:"postgres_port"`
-	PostgresUser           string           `json:"postgres_user" yaml:"postgres_user"`
-	PostgresPassword       string           `json:"postgres_password" yaml:"postgres_password"`
-	PostgresDatabase       string           `json:"postgres_database" yaml:"postgres_database"`
-	PostgresSSLMode        string           `json:"postgres_sslmode" yaml:"postgres_sslmode"`
-	PostgresMigrationBatch int              `json:"postgres_migration_batch" yaml:"postgres_migration_batch"`
-	PostgresMigrationDelay string           `json:"postgres_migration_delay" yaml:"postgres_migration_delay"`
-	SelfUpdateEnabled      bool             `json:"self_update_enabled" yaml:"self_update_enabled"`
-	SelfUpdateRepoURL      string           `json:"self_update_repo_url" yaml:"self_update_repo_url"`
-	SelfUpdateChannel      string           `json:"self_update_channel" yaml:"self_update_channel"`
-	SelfUpdateCheckCron    string           `json:"self_update_check_cron" yaml:"self_update_check_cron"`
-	SelfUpdateAutoRestart  bool             `json:"self_update_auto_restart" yaml:"self_update_auto_restart"`
+	ServerAddress            string           `json:"server_address" yaml:"server_address"`
+	ServerPort               int              `json:"server_port" yaml:"server_port"`
+	CheckCron                string           `json:"check_cron" yaml:"check_cron"`
+	StoragePath              string           `json:"storage_path" yaml:"storage_path"`
+	GitHubToken              string           `json:"github_token" yaml:"github_token"`
+	AdminUser                string           `json:"admin_user" yaml:"admin_user"`
+	AdminPassword            string           `json:"admin_password" yaml:"admin_password"`
+	AdminEnabled             bool             `json:"admin_enabled" yaml:"admin_enabled"`
+	AdminMaxRetries          int              `json:"admin_max_retries" yaml:"admin_max_retries"`
+	AdminLockDuration        int              `json:"admin_lock_duration" yaml:"admin_lock_duration"`
+	ProxyURL                 string           `json:"proxy_url" yaml:"proxy_url"`
+	AssetProxyURL            string           `json:"asset_proxy_url" yaml:"asset_proxy_url"`
+	XgetDomain               string           `json:"xget_domain" yaml:"xget_domain"`
+	XgetEnabled              bool             `json:"xget_enabled" yaml:"xget_enabled"`
+	TLSSkipVerify            bool             `json:"tls_skip_verify" yaml:"tls_skip_verify"`
+	DownloadTimeoutMinutes   int              `json:"download_timeout_minutes" yaml:"download_timeout_minutes"`
+	ConcurrentDownloads      int              `json:"concurrent_downloads" yaml:"concurrent_downloads"`
+	DownloadUrlBase          string           `json:"download_url_base,omitempty" yaml:"download_url_base,omitempty"`
+	DownloadOffloadURL       string           `json:"download_offload_url,omitempty" yaml:"download_offload_url,omitempty"`
+	DownloadOffloadActive    int              `json:"download_offload_active_downloads" yaml:"download_offload_active_downloads"`
+	DownloadOffloadLaunchers []string         `json:"download_offload_launchers" yaml:"download_offload_launchers"`
+	TwoFactorEnabled         bool             `json:"two_factor_enabled" yaml:"two_factor_enabled"`
+	TwoFactorSecret          string           `json:"two_factor_secret" yaml:"two_factor_secret"`
+	PowEnabled               bool             `json:"pow_enabled" yaml:"pow_enabled"`
+	PowAlgorithm             string           `json:"pow_algorithm" yaml:"pow_algorithm"`
+	PowCost                  int              `json:"pow_cost" yaml:"pow_cost"`
+	PowKeyLength             int              `json:"pow_key_length" yaml:"pow_key_length"`
+	PowDifficulty            int              `json:"pow_difficulty" yaml:"pow_difficulty"`
+	PowChallengeTTL          string           `json:"pow_challenge_ttl" yaml:"pow_challenge_ttl"`
+	PowHMACSecret            string           `json:"pow_hmac_secret,omitempty" yaml:"pow_hmac_secret,omitempty"`
+	DownloadTokenTTL         string           `json:"download_token_ttl,omitempty" yaml:"download_token_ttl,omitempty"`
+	Launchers                []LauncherConfig `json:"launchers" yaml:"launchers"`
+	TrafficLimitGB           int              `json:"traffic_limit_gb" yaml:"traffic_limit_gb"`
+	BandwidthLimitMbps       int              `json:"bandwidth_limit_mbps" yaml:"bandwidth_limit_mbps"`
+	BanRecordFile            string           `json:"ban_record_file" yaml:"ban_record_file"`
+	ExternalBlacklistURL     string           `json:"external_blacklist_url" yaml:"external_blacklist_url"`
+	AppealContact            string           `json:"appeal_contact" yaml:"appeal_contact"`
+	RateLimitEnabled         bool             `json:"rate_limit_enabled" yaml:"rate_limit_enabled"`
+	RateLimitPerMinute       int              `json:"rate_limit_per_minute" yaml:"rate_limit_per_minute"`
+	RateLimitBanThreshold    int              `json:"rate_limit_ban_threshold" yaml:"rate_limit_ban_threshold"`
+	FirewallWhitelist        []string         `json:"firewall_whitelist" yaml:"firewall_whitelist"`
+	MySQLHost                string           `json:"mysql_host" yaml:"mysql_host"`
+	MySQLPort                int              `json:"mysql_port" yaml:"mysql_port"`
+	MySQLUser                string           `json:"mysql_user" yaml:"mysql_user"`
+	MySQLPassword            string           `json:"mysql_password" yaml:"mysql_password"`
+	MySQLDatabase            string           `json:"mysql_database" yaml:"mysql_database"`
+	MySQLMigration           bool             `json:"mysql_migration" yaml:"mysql_migration"`
+	DatabaseMode             string           `json:"database_mode" yaml:"database_mode"`
+	PostgresHost             string           `json:"postgres_host" yaml:"postgres_host"`
+	PostgresPort             int              `json:"postgres_port" yaml:"postgres_port"`
+	PostgresUser             string           `json:"postgres_user" yaml:"postgres_user"`
+	PostgresPassword         string           `json:"postgres_password" yaml:"postgres_password"`
+	PostgresDatabase         string           `json:"postgres_database" yaml:"postgres_database"`
+	PostgresSSLMode          string           `json:"postgres_sslmode" yaml:"postgres_sslmode"`
+	PostgresMigrationBatch   int              `json:"postgres_migration_batch" yaml:"postgres_migration_batch"`
+	PostgresMigrationDelay   string           `json:"postgres_migration_delay" yaml:"postgres_migration_delay"`
+	SelfUpdateEnabled        bool             `json:"self_update_enabled" yaml:"self_update_enabled"`
+	SelfUpdateRepoURL        string           `json:"self_update_repo_url" yaml:"self_update_repo_url"`
+	SelfUpdateChannel        string           `json:"self_update_channel" yaml:"self_update_channel"`
+	SelfUpdateCheckCron      string           `json:"self_update_check_cron" yaml:"self_update_check_cron"`
+	SelfUpdateAutoRestart    bool             `json:"self_update_auto_restart" yaml:"self_update_auto_restart"`
 }
 
 func DefaultConfig() *Config {
@@ -415,6 +427,23 @@ func NormalizeConfig(cfg *Config) error {
 	if cfg.TrafficLimitGB < 0 {
 		cfg.TrafficLimitGB = 5
 	}
+	cfg.DownloadOffloadURL = strings.TrimSpace(cfg.DownloadOffloadURL)
+	cfg.DownloadOffloadURL = strings.TrimRight(cfg.DownloadOffloadURL, "/")
+	if cfg.DownloadOffloadURL != "" &&
+		!strings.HasPrefix(cfg.DownloadOffloadURL, "http://") &&
+		!strings.HasPrefix(cfg.DownloadOffloadURL, "https://") {
+		return errors.New("download_offload_url 必须以 http:// 或 https:// 开头")
+	}
+	if cfg.DownloadOffloadActive < 0 {
+		cfg.DownloadOffloadActive = 0
+	}
+	cleaned := make([]string, 0, len(cfg.DownloadOffloadLaunchers))
+	for _, name := range cfg.DownloadOffloadLaunchers {
+		if name = strings.TrimSpace(name); name != "" {
+			cleaned = append(cleaned, name)
+		}
+	}
+	cfg.DownloadOffloadLaunchers = cleaned
 	if cfg.BandwidthLimitMbps <= 0 {
 		cfg.BandwidthLimitMbps = 200
 	}
