@@ -49,6 +49,10 @@ type DownloadEvent struct {
 	StatusCode      int
 	Date            string
 	CreatedAt       string
+	// SplitSegment 标记多段复用连接（PeekReuse 放行的后续 Range 连接）：
+	// 该类连接只累计字节、不计入下载次数（event_count=0），使
+	// SUM(event_count) 口径 = 授权会话数（每个一次性授权恰计 1 次）。
+	SplitSegment bool
 }
 
 // DownloadRank 用于下载次数排行（按启动器聚合）。
@@ -215,9 +219,13 @@ func RecordDownloadEvent(e DownloadEvent) error {
 	} else {
 		query += ` ON CONFLICT(aggregate_key) DO UPDATE SET bytes_served=bytes_served+excluded.bytes_served, event_count=event_count+excluded.event_count`
 	}
+	eventCount := 1
+	if e.SplitSegment {
+		eventCount = 0
+	}
 	_, err := DB.Exec(rebind(query),
 		e.AuthorizationID, e.FilePath, e.FileName, e.Launcher, e.Version, e.ClientIP,
-		e.Country, e.BytesServed, completed, e.StatusCode, e.Date, 1, key, now.Format(AuthzTimeFormat))
+		e.Country, e.BytesServed, completed, e.StatusCode, e.Date, eventCount, key, now.Format(AuthzTimeFormat))
 	if err != nil {
 		return fmt.Errorf("upsert download_event aggregate: %w", err)
 	}

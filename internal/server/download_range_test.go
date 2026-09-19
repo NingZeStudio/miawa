@@ -200,3 +200,47 @@ func unwrapV2ErrorNonFatal(t *testing.T, body []byte) (string, string) {
 	}
 	return env.Error, env.Message
 }
+
+// TestDownloadSegmentCountsAsOneSession 分段下载的统计口径整合：
+// 整文件 + 多条 Range 复用连接，SUM(event_count) 应为 1（授权会话数），
+// 字节则为各连接实际写出之和（流量口径不受影响）。
+func TestDownloadSegmentCountsAsOneSession(t *testing.T) {
+	handler, dlPath := newRangeTestState(t)
+	token := prepareToken(t, handler, "launcher/v1/file.txt")
+
+	download := func(header string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, dlPath+"?token="+token, nil)
+		if header != "" {
+			req.Header.Set("Range", header)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := download(""); rec.Code != http.StatusOK {
+		t.Fatalf("整文件 status = %d", rec.Code)
+	}
+	if rec := download("bytes=0-9"); rec.Code != http.StatusPartialContent {
+		t.Fatalf("分段1 status = %d", rec.Code)
+	}
+	if rec := download("bytes=10-19"); rec.Code != http.StatusPartialContent {
+		t.Fatalf("分段2 status = %d", rec.Code)
+	}
+
+	var eventCount, bytesServed, rows int64
+	if err := db.DB.QueryRow(`SELECT COALESCE(SUM(event_count),0), COALESCE(SUM(bytes_served),0), COUNT(*)
+		FROM download_events WHERE launcher='launcher'`).Scan(&eventCount, &bytesServed, &rows); err != nil {
+		t.Fatalf("查询 download_events error = %v", err)
+	}
+	if eventCount != 1 {
+		t.Fatalf("SUM(event_count) = %d, want 1（分段不计次）", eventCount)
+	}
+	wantBytes := int64(len(rangeTestContent)) + 10 + 10
+	if bytesServed != wantBytes {
+		t.Fatalf("SUM(bytes_served) = %d, want %d（字节口径不变）", bytesServed, wantBytes)
+	}
+	if rows != 2 {
+		t.Fatalf("聚合行数 = %d, want 2（整文件 200 行 + 分段 206 行）", rows)
+	}
+}

@@ -756,7 +756,10 @@ func (s *State) Routes(mux *http.ServeMux) {
 			if !ok {
 				country = ""
 			}
+			// 分段复用连接（reused）只计字节不计数次：同一授权的多条 Range
+			// 连接在统计口径上合并为一次下载会话（SUM(event_count) = 授权数）。
 			if err := db.RecordDownloadEvent(db.DownloadEvent{
+				SplitSegment:    reused,
 				AuthorizationID: auth.AuthorizationID,
 				FilePath:        relPath,
 				FileName:        fileName,

@@ -79,6 +79,7 @@
 - `daily_traffic` = served（服务器写出字节，含中止传输），防刷墙专用。
 - `daily_completed_traffic` = 完整传输字节（`counter.Total >= EstimateTransferBytes(...)` 且状态 200/206），stats 展示口径。
 - 唯一计数点：`internal/server/server.go` 下载处理器（`responseWriterCounter` 包装 ResponseWriter，ReadFrom 直通保留 sendfile；FinalizeTraffic 已 defer 化回收 pending 预留）。事件落库：`db.RecordDownloadEvent`（`download_events` 表）；防刷墙读 `GetDailyServedByIPFromEventsToday`。**`RecordTraffic`/`RecordCompletedTraffic`/`stats.RecordDownload` 已冻结只供测试，勿在请求路径调用。**
+- **下载次数口径 = 授权会话数（2026-09-19）**：PeekReuse 放行的分段复用连接记录事件时 `SplitSegment=true`（event_count=0），只累计字节不计数次——SUM(event_count) 即每个一次性授权恰好 1 次；TTL 过期后重新验证产生新授权才再计 1 次。字节/防刷墙口径不受影响。
 - stats 展示口径 = 冻结基线 SUM + `download_events` SUM（合并后统一排序 DailyStats）；防刷墙取 `download_events` 按 IP 当日 served。
 - `stats.InitWritePool(4, 1000)`：访问/下载记录异步落库，**不要在请求路径里同步写 DB 统计**。`/api/v2/stats` 走 `RefreshSnapshot` 预热（启动 + 每 10m 刷新）的快照，避免每次跑聚合查询。
 
