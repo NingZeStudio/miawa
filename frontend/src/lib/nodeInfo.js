@@ -1,6 +1,6 @@
 // 本节点身份：由后端 /api/v2/node/info 下发（子节点名称与父节点地址）。
 // 模块加载即拉取；失败沿用 localStorage 缓存（节点角色变更几乎不会发生）。
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { getNodeInfo } from '@/services/api'
 
 const nodeName = ref(localStorage.getItem('mirror_node_name') || '')
@@ -26,3 +26,13 @@ export { nodeName, parentNodeUrl }
 export function useNodeInfo() {
   return { nodeName, parentNodeUrl }
 }
+
+// 信息到达晚于首屏标题时，自动为当前标题补上子节点后缀
+watch(nodeName, (name) => {
+  if (name && parentNodeUrl.value && !document.title.includes('子节点')) {
+    document.title = `${document.title} · ${name} 子节点`
+  }
+})
+
+// 模块加载即拉取（应用启动时执行一次）
+loadNodeInfo()
