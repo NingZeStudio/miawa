@@ -188,7 +188,16 @@ func (sc *Scanner) scanLauncher(lcfg config.LauncherConfig) {
 		}
 	}
 
-	if err := sc.s.TrimLauncherVersions(lcfg.Name, effectiveMaxVersions); err != nil {
+	// 上游版本集合：供裁剪逻辑优先淘汰上游已删除 release 的孤儿版本，
+	// 避免「扫描窗口按发布序、保留窗口按版本号序」错位导致的重复下载
+	upstreamVersions := make(map[string]bool, len(releases))
+	for _, rel := range releases {
+		if t := rel.GetTagName(); t != "" {
+			upstreamVersions[t] = true
+		}
+	}
+
+	if err := sc.s.TrimLauncherVersions(lcfg.Name, effectiveMaxVersions, upstreamVersions); err != nil {
 		log.Printf("%s: 清理旧版本失败: %v", lcfg.Name, err)
 	}
 }
@@ -310,7 +319,7 @@ func main() {
 
 	for _, lcfg := range cfg.Launchers {
 		keep := config.NormalizeMaxVersions(lcfg.MaxVersions)
-		if err := s.TrimLauncherVersions(lcfg.Name, keep); err != nil {
+		if err := s.TrimLauncherVersions(lcfg.Name, keep, nil); err != nil {
 			log.Printf("%s: 启动时清理旧版本失败: %v", lcfg.Name, err)
 		}
 	}

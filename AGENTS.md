@@ -17,6 +17,7 @@
 ## 后端架构（internal/ 包职责）
 
 - `cmd/mirror/main.go` — 唯一入口。启动顺序：释放内嵌前端 → 加载配置 → InitDB → 流量 tracker → stats 写池（4 worker + 1000 缓冲）→ server.State → scanner（cron）→ selfupdate manager → cron 调度。`Scanner.scanLauncher` 是同步主循环，`ScanAll` 用 `scanMu.TryLock` 防重入。
+- **版本保留双口径（2026-09-19）**：扫描窗口 = `ListReleasesByPolicy` 按**上游发布序**取前 N；保留窗口 = `TrimLauncherVersions` 按**版本号序**保留前 N。上游删除 release 会留下磁盘孤儿目录，按版本号永久占位，使扫描窗口内的版本每轮「下载完即被清理」（zl2/2.5.2 事故，每小时空转 ~880MB）。故扫描期裁剪传入上游版本集合（孤儿优先淘汰），启动期裁剪传 nil 按纯版本号。
 - `internal/server/` — HTTP 路由 + SPA 托管 + 下载处理器。`server.go`（41KB，单体）是改动热点；`v2.go` 是公开 API v2 handler；`spafallback.go` SPA 回退；`http.go`/`utils.go` 小工具。**下载处理器是流量计数的唯一计数点**（见下"流量统计双口径"）。
 - `internal/db/` — 数据库抽象（SQLite/MySQL/PostgreSQL），见下"数据库"。
 - `internal/config/` — 配置加载/保存/迁移，见下"配置"。

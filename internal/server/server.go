@@ -268,7 +268,12 @@ func (s *State) RemoveVersion(launcher string, version string) {
 	s.latest[launcher] = s.pickLatest(s.index[launcher])
 }
 
-func (s *State) TrimLauncherVersions(launcher string, keep int) error {
+// TrimLauncherVersions 将启动器保留版本数裁剪到 keep 以内。
+// upstream 非空时为本次扫描取到的上游 release 版本集合：不在集合内的「孤儿版本」
+// （上游已删除 release，本地目录仍在）优先淘汰——它们永远不会再出现在扫描窗口里，
+// 却按版本号占着保留名额，会使扫描窗口内的版本每轮「下载完即被清理」。
+// upstream 为 nil 时（启动期无上游信息）退化为纯版本号排序。
+func (s *State) TrimLauncherVersions(launcher string, keep int, upstream map[string]bool) error {
 	keep = config.NormalizeMaxVersions(keep)
 
 	s.mu.RLock()
@@ -293,6 +298,20 @@ func (s *State) TrimLauncherVersions(launcher string, keep int) error {
 	sort.Slice(versions, func(i, j int) bool {
 		return version.Compare(versions[i], versions[j]) > 0
 	})
+	if upstream != nil {
+		// 显式分区：上游存在的版本在前（保留侧），孤儿在后（优先淘汰），
+		// 两侧各自维持已排好的版本号新旧序
+		known := make([]string, 0, len(versions))
+		orphans := make([]string, 0)
+		for _, v := range versions {
+			if upstream[v] {
+				known = append(known, v)
+			} else {
+				orphans = append(orphans, v)
+			}
+		}
+		versions = append(known, orphans...)
+	}
 
 	var deleted []string
 	for _, version := range versions[keep:] {
