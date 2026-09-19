@@ -101,6 +101,22 @@ func (s *State) handleV2NodeStatus(w http.ResponseWriter, r *http.Request) {
 	}, false)
 }
 
+// handleV2NodeInfo 本节点身份（公开，无需密钥）：子节点名称与父节点地址。
+// 前端据此渲染「子节点」徽标、标题后缀与「返回主节点」入口。
+func (s *State) handleV2NodeInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeV2Error(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "Method Not Allowed", nil)
+		return
+	}
+	cfg := s.Conf()
+	markNoStore(w)
+	writeV2Success(w, r, map[string]interface{}{
+		"node_name":       cfg.NodeName,
+		"parent_node_url": cfg.ParentNodeURL,
+		"is_sub_node":     cfg.ParentNodeURL != "",
+	}, false)
+}
+
 // handleV2NodeBlacklist 父节点黑名单全量供给（GET /api/v2/node/blacklist，
 // X-Node-Key 鉴权）。子节点定期拉取做全量对账（source=parent）。
 func (s *State) handleV2NodeBlacklist(w http.ResponseWriter, r *http.Request) {

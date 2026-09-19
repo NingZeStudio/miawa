@@ -65,6 +65,31 @@ func TestNodeStatusRequiresKey(t *testing.T) {
 	}
 }
 
+func TestNodeInfoPublic(t *testing.T) {
+	_, handler := setupNodesState(t, func(cfg *config.Config) {
+		cfg.NodeName = "us1"
+		cfg.ParentNodeURL = "https://miawa.cn"
+	})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v2/node/info", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var env struct {
+		Data struct {
+			NodeName      string `json:"node_name"`
+			ParentNodeURL string `json:"parent_node_url"`
+			IsSubNode     bool   `json:"is_sub_node"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("Unmarshal error = %v", err)
+	}
+	if !env.Data.IsSubNode || env.Data.NodeName != "us1" || env.Data.ParentNodeURL != "https://miawa.cn" {
+		t.Fatalf("node info = %+v", env.Data)
+	}
+}
+
 func TestNodeBlacklistRequiresKey(t *testing.T) {
 	_, handler := setupNodesState(t, nil)
 

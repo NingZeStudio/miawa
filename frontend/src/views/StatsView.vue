@@ -22,6 +22,8 @@ import CardTitle from '@/components/ui/CardTitle.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import { getLauncherDisplayName } from '@/lib/launcher-info'
 import { useSeoMeta } from '@/composables/useSeoMeta'
+import { useNodeInfo } from '@/lib/nodeInfo'
+const { nodeName, parentNodeUrl } = useNodeInfo()
 
 useSeoMeta(
   {
@@ -673,8 +675,19 @@ onUnmounted(() => {
             <span class="text-xs text-muted-foreground">每 5 分钟聚合</span>
           </CardHeader>
           <CardContent>
-            <div v-if="!nodes.length" class="py-6 text-center text-sm text-muted-foreground">
-              未配置子节点
+            <div v-if="!nodes.length" class="py-6 text-center">
+              <template v-if="parentNodeUrl">
+                <p class="text-sm text-muted-foreground">
+                  本站点为子节点<template v-if="nodeName"><span class="font-medium text-foreground">「{{ nodeName }}」</span></template>，仅镜像热门资源
+                </p>
+                <a
+                  :href="parentNodeUrl"
+                  class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+                >
+                  返回主节点
+                </a>
+              </template>
+              <p v-else class="text-sm text-muted-foreground">未配置子节点</p>
             </div>
             <div v-else class="space-y-3">
               <div

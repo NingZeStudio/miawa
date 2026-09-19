@@ -48,3 +48,6 @@ export const getDownloadLanding = (token) =>
 export const getFileIntegrity = (filePath) =>
     api.get(`${globalConfig.api.endpoints.fileIntegrity}?file_path=${encodeURIComponent(filePath)}`)
 
+// 本节点身份：子节点名称与父节点地址（子节点标识/返回主节点入口）
+export const getNodeInfo = () => api.get(globalConfig.api.endpoints.nodeInfo)
+

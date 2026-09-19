@@ -47,7 +47,8 @@ export const globalConfig = {
       downloadAuthorize: '/downloads/authorize',
       downloadPrepare: '/downloads/prepare',
       downloadLanding: '/downloads/landing',
-      fileIntegrity: '/files/integrity'
+      fileIntegrity: '/files/integrity',
+      nodeInfo: '/node/info'
     }
   },
 

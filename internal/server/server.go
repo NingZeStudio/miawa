@@ -796,6 +796,7 @@ func (s *State) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v2/pow/config", s.handleV2PowConfig)
 	// 文件完整性：SHA-256 校验值（纯新增端点，不影响既有 v2 响应结构）
 	mux.HandleFunc("/api/v2/files/integrity", s.handleV2FileIntegrity)
+	mux.HandleFunc("/api/v2/node/info", s.handleV2NodeInfo)
 	mux.HandleFunc("/api/v2/node/status", s.handleV2NodeStatus)
 	mux.HandleFunc("/api/v2/node/blacklist", s.handleV2NodeBlacklist)
 
