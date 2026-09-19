@@ -93,6 +93,7 @@ go run ./cmd/mirror
 | `download_url_base` | string | `""` | 对外下载链接基准地址（含协议头）。为空时回退到 `server_address` |
 | `download_offload_url` | string | `""` | 备用下载节点基准（如 `https://us1.miawa.cn`，须为独立完整镜像）。留空禁用分流 |
 | `download_offload_active_downloads` | int | `0` | 主服活跃下载连接数达到该值时启用分流（浏览器 landing 流跳备用节点验证页；CLI/API 直连不受影响） |
+| `download_offload_mbps` | int | `0` | 主服实时带宽达到该值（Mbps）时启用分流，与连接数阈值任一满足即触发 |
 | `download_offload_launchers` | list | `[]` | 允许分流的启动器名单（备用节点已镜像的），名单外启动器绝不分流 |
 | `proxy_url` | string | `""` | HTTP 代理，用于扫描阶段下载 |
 | `asset_proxy_url` | string | `""` | 资源下载地址前缀代理 |

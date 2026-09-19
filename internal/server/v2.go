@@ -570,10 +570,22 @@ func (s *State) handleV2DownloadLanding(w http.ResponseWriter, r *http.Request) 
 // 未镜像的）绝不分流，避免把用户引向 404。
 func (s *State) offloadURLFor(filePath string) string {
 	cfg := s.Conf()
-	if cfg.DownloadOffloadURL == "" || cfg.DownloadOffloadActive <= 0 {
+	if cfg.DownloadOffloadURL == "" {
 		return ""
 	}
-	if s.bandwidth == nil || s.bandwidth.Snapshot().ActiveDownloads < int64(cfg.DownloadOffloadActive) {
+	// 两个阈值都未启用 = 分流关闭
+	if cfg.DownloadOffloadActive <= 0 && cfg.DownloadOffloadMbps <= 0 {
+		return ""
+	}
+	if s.bandwidth == nil {
+		return ""
+	}
+	// 两个触发信号任一满足即分流：活跃连接数达标，或实时带宽达到阈值
+	//（主服突发带宽大，带宽水位是更直接的压力表达）
+	snap := s.bandwidth.Snapshot()
+	byActive := cfg.DownloadOffloadActive > 0 && snap.ActiveDownloads >= int64(cfg.DownloadOffloadActive)
+	byBandwidth := cfg.DownloadOffloadMbps > 0 && snap.CurrentBandwidthMbps >= float64(cfg.DownloadOffloadMbps)
+	if !byActive && !byBandwidth {
 		return ""
 	}
 	launcher := strings.Split(filepath.ToSlash(filePath), "/")[0]

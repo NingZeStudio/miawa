@@ -143,3 +143,23 @@ func TestLandingNoOffloadWhenDisabled(t *testing.T) {
 		t.Fatalf("未启用分流时不应改变 download_url，got %s", got)
 	}
 }
+
+// 带宽水位触发：实时带宽达到 download_offload_mbps 阈值即分流（活跃连接数
+// 阈值置 0 禁用，单独验证带宽信号）。
+func TestLandingOffloadsOnBandwidthThreshold(t *testing.T) {
+	state, handler := setupLandingOffloadState(t, func(cfg *config.Config) {
+		cfg.DownloadOffloadActive = 0
+		cfg.DownloadOffloadMbps = 1
+	})
+	token := prepareToken(t, handler, "zl2/v2.5.3/app.apk")
+
+	// 10MB 写入 10 秒测量窗口 ≈ 8 Mbps ≥ 阈值 1
+	state.bandwidth.RecordBytes(10 << 20)
+
+	resp := landingDownloadURL(t, handler, token)
+	got, _ := resp["download_url"].(string)
+	want := "https://us1.miawa.cn/verify?file=zl2%2Fv2.5.3%2Fapp.apk"
+	if got != want {
+		t.Fatalf("带宽超阈值应分流，download_url = %s", got)
+	}
+}

@@ -38,6 +38,7 @@ download_url_base: {{ yaml .DownloadUrlBase }}
 # （备用节点须为独立完整镜像；留空或阈值为 0 = 禁用；名单外的启动器不走分流）
 download_offload_url: {{ yaml .DownloadOffloadURL }}
 download_offload_active_downloads: {{ .DownloadOffloadActive }}
+download_offload_mbps: {{ .DownloadOffloadMbps }}
 download_offload_launchers:
 {{- range .DownloadOffloadLaunchers }}
   - {{ yaml . }}
@@ -228,6 +229,7 @@ type Config struct {
 	DownloadUrlBase          string   `json:"download_url_base,omitempty" yaml:"download_url_base,omitempty"`
 	DownloadOffloadURL       string   `json:"download_offload_url,omitempty" yaml:"download_offload_url,omitempty"`
 	DownloadOffloadActive    int      `json:"download_offload_active_downloads" yaml:"download_offload_active_downloads"`
+	DownloadOffloadMbps      int      `json:"download_offload_mbps" yaml:"download_offload_mbps"`
 	DownloadOffloadLaunchers []string `json:"download_offload_launchers" yaml:"download_offload_launchers"`
 	// 节点互联：主服聚合子节点状态（mirror_nodes），子节点回源父节点同步黑名单（parent_node_*）
 	NodeName               string           `json:"node_name,omitempty" yaml:"node_name,omitempty"`
@@ -461,6 +463,9 @@ func NormalizeConfig(cfg *Config) error {
 	}
 	if cfg.DownloadOffloadActive < 0 {
 		cfg.DownloadOffloadActive = 0
+	}
+	if cfg.DownloadOffloadMbps < 0 {
+		cfg.DownloadOffloadMbps = 0
 	}
 	cleaned := make([]string, 0, len(cfg.DownloadOffloadLaunchers))
 	for _, name := range cfg.DownloadOffloadLaunchers {
