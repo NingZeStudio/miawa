@@ -286,7 +286,12 @@ func (s *State) handleV2Stats(w http.ResponseWriter, r *http.Request) {
 		writeV2Error(w, r, http.StatusInternalServerError, "internal_error", "Failed to fetch stats", nil)
 		return
 	}
-	writeV2Success(w, r, data, true)
+	// 注入子节点状态轮询缓存（主服聚合），旧字段不变纯新增
+	resp := struct {
+		*stats.StatsData
+		Nodes []NodeStatus `json:"nodes,omitempty"`
+	}{data, s.nodeStatusSnapshot()}
+	writeV2Success(w, r, resp, true)
 }
 
 // handleV2Bandwidth returns the in-memory rolling bandwidth status for downloads.
@@ -913,6 +918,8 @@ func maskConfigSecrets(cfg *config.Config) {
 	cfg.PowHMACSecret = ""
 	cfg.MySQLPassword = ""
 	cfg.PostgresPassword = ""
+	cfg.NodeAPIKey = ""
+	cfg.ParentNodeKey = ""
 }
 
 // keepConfigSecrets 用 oldCfg 回填 newCfg 中为空的秘密字段（POST 留空=保持不变）。
@@ -938,6 +945,12 @@ func keepConfigSecrets(newCfg, oldCfg *config.Config) error {
 	}
 	if newCfg.PostgresPassword == "" {
 		newCfg.PostgresPassword = oldCfg.PostgresPassword
+	}
+	if newCfg.NodeAPIKey == "" {
+		newCfg.NodeAPIKey = oldCfg.NodeAPIKey
+	}
+	if newCfg.ParentNodeKey == "" {
+		newCfg.ParentNodeKey = oldCfg.ParentNodeKey
 	}
 	return nil
 }

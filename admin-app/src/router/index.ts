@@ -67,6 +67,17 @@ export const routes: RouteRecordRaw[] = [
           isIframe: false,
           keepAlive: true
         }
+      },
+      {
+        path: 'nodes',
+        name: 'Nodes',
+        component: () => import('@/views/nodes/index.vue'),
+        meta: {
+          title: '子节点管理',
+          icon: 'Network',
+          isIframe: false,
+          keepAlive: true
+        }
       }
     ]
   },

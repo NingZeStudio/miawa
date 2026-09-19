@@ -606,6 +606,42 @@ func AddIPToBlacklist(ip, reason string) error {
 	return err
 }
 
+// ReplaceParentBlacklist 全量对账父节点下发的黑名单：事务内先清空 source='parent'
+// 的旧行，再按父节点数据插入（保留父节点的 reason/ban_type/created_at）。
+// 子节点自身的封禁（source=local/auto 等）不受影响。
+func ReplaceParentBlacklist(entries []map[string]string) error {
+	tx, err := DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(rebind("DELETE FROM ip_blacklist WHERE source = 'parent'")); err != nil {
+		return err
+	}
+
+	var query string
+	if isMySQL {
+		query = "INSERT INTO ip_blacklist (ip, reason, source, ban_type, created_at) VALUES (?, ?, 'parent', ?, ?) ON DUPLICATE KEY UPDATE reason = VALUES(reason), source = 'parent', ban_type = VALUES(ban_type), created_at = VALUES(created_at)"
+	} else if isPostgres {
+		query = "INSERT INTO ip_blacklist (ip, reason, source, ban_type, created_at) VALUES (?, ?, 'parent', ?, ?) ON CONFLICT (ip) DO UPDATE SET reason = EXCLUDED.reason, source = 'parent', ban_type = EXCLUDED.ban_type, created_at = EXCLUDED.created_at"
+	} else {
+		query = "INSERT OR REPLACE INTO ip_blacklist (ip, reason, source, ban_type, created_at) VALUES (?, ?, 'parent', ?, ?)"
+	}
+
+	for _, entry := range entries {
+		ip := entry["ip"]
+		if ip == "" {
+			continue
+		}
+		if _, err := tx.Exec(rebind(query), ip, entry["reason"], entry["ban_type"], entry["created_at"]); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func RemoveIPFromBlacklist(ip string) error {
 	tx, err := DB.Begin()
 	if err != nil {

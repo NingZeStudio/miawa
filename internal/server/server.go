@@ -51,10 +51,14 @@ type State struct {
 	loginAttemptsMu sync.Mutex
 
 	// 验证码（已移除极验）→ PoW 挑战 + DB 授权
-	powMgr          *pow.Manager
-	authzMgr        *download_authz.Manager
-	bandwidth       *bandwidth.Tracker
-	selfUpdate      *selfupdate.Manager
+	powMgr     *pow.Manager
+	authzMgr   *download_authz.Manager
+	bandwidth  *bandwidth.Tracker
+	selfUpdate *selfupdate.Manager
+
+	// 子节点状态轮询缓存（主服聚合展示用）
+	nodeMu          sync.RWMutex
+	nodeStatuses    map[string]*NodeStatus
 	applySelfUpdate func(ctx context.Context) error
 	restartProcess  func() error
 
@@ -88,6 +92,7 @@ func NewState(base string, projectRoot string, cfg *config.Config) *State {
 	}
 	s.authzMgr = download_authz.NewManager(parseDuration(cfg.DownloadTokenTTL, 5*time.Minute))
 	s.bandwidth = bandwidth.NewTracker(int64(cfg.BandwidthLimitMbps))
+	s.nodeStatuses = make(map[string]*NodeStatus)
 
 	return s
 }
@@ -791,6 +796,8 @@ func (s *State) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v2/pow/config", s.handleV2PowConfig)
 	// 文件完整性：SHA-256 校验值（纯新增端点，不影响既有 v2 响应结构）
 	mux.HandleFunc("/api/v2/files/integrity", s.handleV2FileIntegrity)
+	mux.HandleFunc("/api/v2/node/status", s.handleV2NodeStatus)
+	mux.HandleFunc("/api/v2/node/blacklist", s.handleV2NodeBlacklist)
 
 	// 认证 + 扫描（v2 admin 中间件，返回信封格式错误）
 	mux.Handle("/api/v2/auth/login", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.handleV2Login)))
@@ -801,6 +808,8 @@ func (s *State) Routes(mux *http.ServeMux) {
 	// 管理后台（v2 admin 中间件）
 	mux.Handle("/api/v2/admin/config", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminConfig))))
 	mux.Handle("/api/v2/admin/blacklist", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminBlacklist))))
+	mux.Handle("/api/v2/admin/nodes", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminNodes))))
+	mux.Handle("/api/v2/admin/nodes/refresh", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminNodesRefresh))))
 	mux.Handle("/api/v2/admin/firewall/status", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminFirewallStatus))))
 	mux.Handle("/api/v2/admin/files", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminFiles))))
 	mux.Handle("/api/v2/admin/files/download", s.v2AdminSwitchMiddleware(http.HandlerFunc(s.v2AdminMiddleware(s.handleV2AdminFileDownload))))

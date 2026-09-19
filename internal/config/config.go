@@ -43,6 +43,19 @@ download_offload_launchers:
   - {{ yaml . }}
 {{- end }}
 
+# 节点互联：本节点名称（状态上报自报家门）；节点间互访密钥（X-Node-Key）
+node_name: {{ yaml .NodeName }}
+node_api_key: {{ yaml .NodeAPIKey }}
+# 主服聚合的子节点清单（仅主服配置）
+mirror_nodes:
+{{- range .MirrorNodes }}
+  - name: {{ yaml .Name }}
+    url: {{ yaml .URL }}
+{{- end }}
+# 子节点回源父节点拉取黑名单（仅子节点配置；留空禁用同步）
+parent_node_url: {{ yaml .ParentNodeURL }}
+parent_node_key: {{ yaml .ParentNodeKey }}
+
 # 单文件下载超时（分钟），Git 镜像同步也复用此超时
 download_timeout_minutes: {{ .DownloadTimeoutMinutes }}
 concurrent_downloads: {{ .ConcurrentDownloads }}
@@ -188,68 +201,80 @@ func ShouldSyncRelease(mode string) bool {
 	return normalized == LauncherModeRelease || normalized == LauncherModeAll
 }
 
+// NodeRoute 是主服视角的一个子节点（名称 + 对外基准地址）。
+type NodeRoute struct {
+	Name string `json:"name" yaml:"name"`
+	URL  string `json:"url" yaml:"url"`
+}
+
 type Config struct {
-	ServerAddress            string           `json:"server_address" yaml:"server_address"`
-	ServerPort               int              `json:"server_port" yaml:"server_port"`
-	CheckCron                string           `json:"check_cron" yaml:"check_cron"`
-	StoragePath              string           `json:"storage_path" yaml:"storage_path"`
-	GitHubToken              string           `json:"github_token" yaml:"github_token"`
-	AdminUser                string           `json:"admin_user" yaml:"admin_user"`
-	AdminPassword            string           `json:"admin_password" yaml:"admin_password"`
-	AdminEnabled             bool             `json:"admin_enabled" yaml:"admin_enabled"`
-	AdminMaxRetries          int              `json:"admin_max_retries" yaml:"admin_max_retries"`
-	AdminLockDuration        int              `json:"admin_lock_duration" yaml:"admin_lock_duration"`
-	ProxyURL                 string           `json:"proxy_url" yaml:"proxy_url"`
-	AssetProxyURL            string           `json:"asset_proxy_url" yaml:"asset_proxy_url"`
-	XgetDomain               string           `json:"xget_domain" yaml:"xget_domain"`
-	XgetEnabled              bool             `json:"xget_enabled" yaml:"xget_enabled"`
-	TLSSkipVerify            bool             `json:"tls_skip_verify" yaml:"tls_skip_verify"`
-	DownloadTimeoutMinutes   int              `json:"download_timeout_minutes" yaml:"download_timeout_minutes"`
-	ConcurrentDownloads      int              `json:"concurrent_downloads" yaml:"concurrent_downloads"`
-	DownloadUrlBase          string           `json:"download_url_base,omitempty" yaml:"download_url_base,omitempty"`
-	DownloadOffloadURL       string           `json:"download_offload_url,omitempty" yaml:"download_offload_url,omitempty"`
-	DownloadOffloadActive    int              `json:"download_offload_active_downloads" yaml:"download_offload_active_downloads"`
-	DownloadOffloadLaunchers []string         `json:"download_offload_launchers" yaml:"download_offload_launchers"`
-	TwoFactorEnabled         bool             `json:"two_factor_enabled" yaml:"two_factor_enabled"`
-	TwoFactorSecret          string           `json:"two_factor_secret" yaml:"two_factor_secret"`
-	PowEnabled               bool             `json:"pow_enabled" yaml:"pow_enabled"`
-	PowAlgorithm             string           `json:"pow_algorithm" yaml:"pow_algorithm"`
-	PowCost                  int              `json:"pow_cost" yaml:"pow_cost"`
-	PowKeyLength             int              `json:"pow_key_length" yaml:"pow_key_length"`
-	PowDifficulty            int              `json:"pow_difficulty" yaml:"pow_difficulty"`
-	PowChallengeTTL          string           `json:"pow_challenge_ttl" yaml:"pow_challenge_ttl"`
-	PowHMACSecret            string           `json:"pow_hmac_secret,omitempty" yaml:"pow_hmac_secret,omitempty"`
-	DownloadTokenTTL         string           `json:"download_token_ttl,omitempty" yaml:"download_token_ttl,omitempty"`
-	Launchers                []LauncherConfig `json:"launchers" yaml:"launchers"`
-	TrafficLimitGB           int              `json:"traffic_limit_gb" yaml:"traffic_limit_gb"`
-	BandwidthLimitMbps       int              `json:"bandwidth_limit_mbps" yaml:"bandwidth_limit_mbps"`
-	BanRecordFile            string           `json:"ban_record_file" yaml:"ban_record_file"`
-	ExternalBlacklistURL     string           `json:"external_blacklist_url" yaml:"external_blacklist_url"`
-	AppealContact            string           `json:"appeal_contact" yaml:"appeal_contact"`
-	RateLimitEnabled         bool             `json:"rate_limit_enabled" yaml:"rate_limit_enabled"`
-	RateLimitPerMinute       int              `json:"rate_limit_per_minute" yaml:"rate_limit_per_minute"`
-	RateLimitBanThreshold    int              `json:"rate_limit_ban_threshold" yaml:"rate_limit_ban_threshold"`
-	FirewallWhitelist        []string         `json:"firewall_whitelist" yaml:"firewall_whitelist"`
-	MySQLHost                string           `json:"mysql_host" yaml:"mysql_host"`
-	MySQLPort                int              `json:"mysql_port" yaml:"mysql_port"`
-	MySQLUser                string           `json:"mysql_user" yaml:"mysql_user"`
-	MySQLPassword            string           `json:"mysql_password" yaml:"mysql_password"`
-	MySQLDatabase            string           `json:"mysql_database" yaml:"mysql_database"`
-	MySQLMigration           bool             `json:"mysql_migration" yaml:"mysql_migration"`
-	DatabaseMode             string           `json:"database_mode" yaml:"database_mode"`
-	PostgresHost             string           `json:"postgres_host" yaml:"postgres_host"`
-	PostgresPort             int              `json:"postgres_port" yaml:"postgres_port"`
-	PostgresUser             string           `json:"postgres_user" yaml:"postgres_user"`
-	PostgresPassword         string           `json:"postgres_password" yaml:"postgres_password"`
-	PostgresDatabase         string           `json:"postgres_database" yaml:"postgres_database"`
-	PostgresSSLMode          string           `json:"postgres_sslmode" yaml:"postgres_sslmode"`
-	PostgresMigrationBatch   int              `json:"postgres_migration_batch" yaml:"postgres_migration_batch"`
-	PostgresMigrationDelay   string           `json:"postgres_migration_delay" yaml:"postgres_migration_delay"`
-	SelfUpdateEnabled        bool             `json:"self_update_enabled" yaml:"self_update_enabled"`
-	SelfUpdateRepoURL        string           `json:"self_update_repo_url" yaml:"self_update_repo_url"`
-	SelfUpdateChannel        string           `json:"self_update_channel" yaml:"self_update_channel"`
-	SelfUpdateCheckCron      string           `json:"self_update_check_cron" yaml:"self_update_check_cron"`
-	SelfUpdateAutoRestart    bool             `json:"self_update_auto_restart" yaml:"self_update_auto_restart"`
+	ServerAddress            string   `json:"server_address" yaml:"server_address"`
+	ServerPort               int      `json:"server_port" yaml:"server_port"`
+	CheckCron                string   `json:"check_cron" yaml:"check_cron"`
+	StoragePath              string   `json:"storage_path" yaml:"storage_path"`
+	GitHubToken              string   `json:"github_token" yaml:"github_token"`
+	AdminUser                string   `json:"admin_user" yaml:"admin_user"`
+	AdminPassword            string   `json:"admin_password" yaml:"admin_password"`
+	AdminEnabled             bool     `json:"admin_enabled" yaml:"admin_enabled"`
+	AdminMaxRetries          int      `json:"admin_max_retries" yaml:"admin_max_retries"`
+	AdminLockDuration        int      `json:"admin_lock_duration" yaml:"admin_lock_duration"`
+	ProxyURL                 string   `json:"proxy_url" yaml:"proxy_url"`
+	AssetProxyURL            string   `json:"asset_proxy_url" yaml:"asset_proxy_url"`
+	XgetDomain               string   `json:"xget_domain" yaml:"xget_domain"`
+	XgetEnabled              bool     `json:"xget_enabled" yaml:"xget_enabled"`
+	TLSSkipVerify            bool     `json:"tls_skip_verify" yaml:"tls_skip_verify"`
+	DownloadTimeoutMinutes   int      `json:"download_timeout_minutes" yaml:"download_timeout_minutes"`
+	ConcurrentDownloads      int      `json:"concurrent_downloads" yaml:"concurrent_downloads"`
+	DownloadUrlBase          string   `json:"download_url_base,omitempty" yaml:"download_url_base,omitempty"`
+	DownloadOffloadURL       string   `json:"download_offload_url,omitempty" yaml:"download_offload_url,omitempty"`
+	DownloadOffloadActive    int      `json:"download_offload_active_downloads" yaml:"download_offload_active_downloads"`
+	DownloadOffloadLaunchers []string `json:"download_offload_launchers" yaml:"download_offload_launchers"`
+	// 节点互联：主服聚合子节点状态（mirror_nodes），子节点回源父节点同步黑名单（parent_node_*）
+	NodeName               string           `json:"node_name,omitempty" yaml:"node_name,omitempty"`
+	NodeAPIKey             string           `json:"node_api_key,omitempty" yaml:"node_api_key,omitempty"`
+	MirrorNodes            []NodeRoute      `json:"mirror_nodes" yaml:"mirror_nodes"`
+	ParentNodeURL          string           `json:"parent_node_url,omitempty" yaml:"parent_node_url,omitempty"`
+	ParentNodeKey          string           `json:"parent_node_key,omitempty" yaml:"parent_node_key,omitempty"`
+	TwoFactorEnabled       bool             `json:"two_factor_enabled" yaml:"two_factor_enabled"`
+	TwoFactorSecret        string           `json:"two_factor_secret" yaml:"two_factor_secret"`
+	PowEnabled             bool             `json:"pow_enabled" yaml:"pow_enabled"`
+	PowAlgorithm           string           `json:"pow_algorithm" yaml:"pow_algorithm"`
+	PowCost                int              `json:"pow_cost" yaml:"pow_cost"`
+	PowKeyLength           int              `json:"pow_key_length" yaml:"pow_key_length"`
+	PowDifficulty          int              `json:"pow_difficulty" yaml:"pow_difficulty"`
+	PowChallengeTTL        string           `json:"pow_challenge_ttl" yaml:"pow_challenge_ttl"`
+	PowHMACSecret          string           `json:"pow_hmac_secret,omitempty" yaml:"pow_hmac_secret,omitempty"`
+	DownloadTokenTTL       string           `json:"download_token_ttl,omitempty" yaml:"download_token_ttl,omitempty"`
+	Launchers              []LauncherConfig `json:"launchers" yaml:"launchers"`
+	TrafficLimitGB         int              `json:"traffic_limit_gb" yaml:"traffic_limit_gb"`
+	BandwidthLimitMbps     int              `json:"bandwidth_limit_mbps" yaml:"bandwidth_limit_mbps"`
+	BanRecordFile          string           `json:"ban_record_file" yaml:"ban_record_file"`
+	ExternalBlacklistURL   string           `json:"external_blacklist_url" yaml:"external_blacklist_url"`
+	AppealContact          string           `json:"appeal_contact" yaml:"appeal_contact"`
+	RateLimitEnabled       bool             `json:"rate_limit_enabled" yaml:"rate_limit_enabled"`
+	RateLimitPerMinute     int              `json:"rate_limit_per_minute" yaml:"rate_limit_per_minute"`
+	RateLimitBanThreshold  int              `json:"rate_limit_ban_threshold" yaml:"rate_limit_ban_threshold"`
+	FirewallWhitelist      []string         `json:"firewall_whitelist" yaml:"firewall_whitelist"`
+	MySQLHost              string           `json:"mysql_host" yaml:"mysql_host"`
+	MySQLPort              int              `json:"mysql_port" yaml:"mysql_port"`
+	MySQLUser              string           `json:"mysql_user" yaml:"mysql_user"`
+	MySQLPassword          string           `json:"mysql_password" yaml:"mysql_password"`
+	MySQLDatabase          string           `json:"mysql_database" yaml:"mysql_database"`
+	MySQLMigration         bool             `json:"mysql_migration" yaml:"mysql_migration"`
+	DatabaseMode           string           `json:"database_mode" yaml:"database_mode"`
+	PostgresHost           string           `json:"postgres_host" yaml:"postgres_host"`
+	PostgresPort           int              `json:"postgres_port" yaml:"postgres_port"`
+	PostgresUser           string           `json:"postgres_user" yaml:"postgres_user"`
+	PostgresPassword       string           `json:"postgres_password" yaml:"postgres_password"`
+	PostgresDatabase       string           `json:"postgres_database" yaml:"postgres_database"`
+	PostgresSSLMode        string           `json:"postgres_sslmode" yaml:"postgres_sslmode"`
+	PostgresMigrationBatch int              `json:"postgres_migration_batch" yaml:"postgres_migration_batch"`
+	PostgresMigrationDelay string           `json:"postgres_migration_delay" yaml:"postgres_migration_delay"`
+	SelfUpdateEnabled      bool             `json:"self_update_enabled" yaml:"self_update_enabled"`
+	SelfUpdateRepoURL      string           `json:"self_update_repo_url" yaml:"self_update_repo_url"`
+	SelfUpdateChannel      string           `json:"self_update_channel" yaml:"self_update_channel"`
+	SelfUpdateCheckCron    string           `json:"self_update_check_cron" yaml:"self_update_check_cron"`
+	SelfUpdateAutoRestart  bool             `json:"self_update_auto_restart" yaml:"self_update_auto_restart"`
 }
 
 func DefaultConfig() *Config {
@@ -444,6 +469,34 @@ func NormalizeConfig(cfg *Config) error {
 		}
 	}
 	cfg.DownloadOffloadLaunchers = cleaned
+	cfg.NodeName = strings.TrimSpace(cfg.NodeName)
+	cfg.NodeAPIKey = strings.TrimSpace(cfg.NodeAPIKey)
+	cfg.ParentNodeURL = strings.TrimSpace(cfg.ParentNodeURL)
+	cfg.ParentNodeURL = strings.TrimRight(cfg.ParentNodeURL, "/")
+	cfg.ParentNodeKey = strings.TrimSpace(cfg.ParentNodeKey)
+	if cfg.ParentNodeURL != "" &&
+		!strings.HasPrefix(cfg.ParentNodeURL, "http://") &&
+		!strings.HasPrefix(cfg.ParentNodeURL, "https://") {
+		return errors.New("parent_node_url 必须以 http:// 或 https:// 开头")
+	}
+	cleanedNodes := make([]NodeRoute, 0, len(cfg.MirrorNodes))
+	seenNodes := make(map[string]bool, len(cfg.MirrorNodes))
+	for _, node := range cfg.MirrorNodes {
+		node.Name = strings.TrimSpace(node.Name)
+		node.URL = strings.TrimRight(strings.TrimSpace(node.URL), "/")
+		if node.Name == "" || node.URL == "" {
+			continue
+		}
+		if !strings.HasPrefix(node.URL, "http://") && !strings.HasPrefix(node.URL, "https://") {
+			return fmt.Errorf("mirror_nodes[%s].url 必须以 http:// 或 https:// 开头", node.Name)
+		}
+		if seenNodes[node.Name] {
+			continue
+		}
+		seenNodes[node.Name] = true
+		cleanedNodes = append(cleanedNodes, node)
+	}
+	cfg.MirrorNodes = cleanedNodes
 	if cfg.BandwidthLimitMbps <= 0 {
 		cfg.BandwidthLimitMbps = 200
 	}

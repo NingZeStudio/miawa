@@ -161,6 +161,7 @@ import {
   Settings2,
   Folder,
   ShieldAlert,
+  Network,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -218,6 +219,12 @@ const menuList = ref<MenuItemConfig[]>([
     path: '/blacklist',
     icon: 'ShieldAlert',
     isIframe: false
+  },
+  {
+    title: '子节点管理',
+    path: '/nodes',
+    icon: 'Network',
+    isIframe: false
   }
 ])
 
@@ -226,6 +233,7 @@ const iconMap: Record<string, any> = {
   Settings2,
   Folder,
   ShieldAlert,
+  Network,
   AppWindow
 }
 

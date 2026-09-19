@@ -11,7 +11,8 @@ import {
   PhGauge as Gauge,
   PhMapPin as MapPin,
   PhChartPie as ChartPie,
-  PhTrendUp as TrendingUp
+  PhTrendUp as TrendingUp,
+  PhCircuitry as Circuit
 } from '@phosphor-icons/vue'
 import Card from '@/components/ui/Card.vue'
 import CardContent from '@/components/ui/CardContent.vue'
@@ -101,6 +102,21 @@ const formatBytes = (bytes) => {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']
   const i = Math.max(0, Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 子节点状态（主服聚合轮询缓存；无配置时为空数组）
+const nodes = computed(() => stats.value.nodes || [])
+
+const formatUptime = (seconds) => {
+  if (!seconds || seconds < 60) return `${seconds || 0} 秒`
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return h > 0 ? `${h} 小时 ${m} 分` : `${m} 分钟`
+}
+
+const formatPollTime = (ts) => {
+  if (!ts) return '-'
+  try { return new Date(ts).toLocaleTimeString('zh-CN', { hour12: false }) } catch { return '-' }
 }
 
 const diskPercentage = computed(() => {
@@ -646,6 +662,68 @@ onUnmounted(() => {
             </div>
           </div>
         </CardContent>
+        </Card>
+
+        <Card class="shadow-sm">
+          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle class="flex items-center gap-2 text-base">
+              <Circuit weight="duotone" class="h-4 w-4 text-primary" />
+              子节点状态
+            </CardTitle>
+            <span class="text-xs text-muted-foreground">每 5 分钟聚合</span>
+          </CardHeader>
+          <CardContent>
+            <div v-if="!nodes.length" class="py-6 text-center text-sm text-muted-foreground">
+              未配置子节点
+            </div>
+            <div v-else class="space-y-3">
+              <div
+                v-for="node in nodes"
+                :key="node.name"
+                class="rounded-lg border bg-card p-3"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="inline-block h-2 w-2 rounded-full"
+                      :class="node.online ? 'bg-green-500' : 'bg-red-500'"
+                    ></span>
+                    <span class="text-sm font-semibold">{{ node.name }}</span>
+                    <span v-if="node.version" class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">v{{ node.version }}</span>
+                  </div>
+                  <span class="text-[11px] text-muted-foreground">{{ formatPollTime(node.last_poll) }}</span>
+                </div>
+                <template v-if="node.online">
+                  <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs 2xl:grid-cols-4">
+                    <div>
+                      <span class="text-muted-foreground">活跃下载 </span>
+                      <span class="font-medium">{{ node.active_downloads || 0 }}</span>
+                    </div>
+                    <div>
+                      <span class="text-muted-foreground">带宽 </span>
+                      <span class="font-medium">{{ formatMbps(node.current_bandwidth_mbps || 0) }}</span>
+                      <span class="text-muted-foreground"> / {{ node.bandwidth_limit_mbps ?? '-' }}M</span>
+                    </div>
+                    <div>
+                      <span class="text-muted-foreground">磁盘可用 </span>
+                      <span class="font-medium">{{ formatBytes(node.disk?.free || 0) }}</span>
+                    </div>
+                    <div>
+                      <span class="text-muted-foreground">已镜像 </span>
+                      <span class="font-medium">{{ (node.launchers || []).length }}</span>
+                      <span class="text-muted-foreground"> 个启动器</span>
+                    </div>
+                  </div>
+                  <p class="mt-1.5 text-[11px] text-muted-foreground">
+                    运行 {{ formatUptime(node.uptime_seconds) }}，累计下载 {{ (node.total_downloads || 0).toLocaleString() }} 次
+                  </p>
+                </template>
+                <p v-else class="mt-2 text-xs text-red-600 dark:text-red-400">
+                  离线：{{ node.error || '无响应' }}
+                </p>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
 

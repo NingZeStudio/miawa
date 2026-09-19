@@ -380,6 +380,41 @@ func main() {
 		log.Printf("注册下载授权清理任务失败: %v", err)
 	}
 
+	// 子节点状态轮询（主服角色）：每 5 分钟聚合一次 mirror_nodes 状态
+	if len(cfg.MirrorNodes) > 0 {
+		if _, err := c.AddFunc("*/5 * * * *", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			s.PollNodes(ctx)
+		}); err != nil {
+			log.Fatalf("注册节点轮询任务失败: %v", err)
+		}
+		safeGo("初始节点轮询", func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			s.PollNodes(ctx)
+		})
+	}
+
+	// 父节点黑名单同步（子节点角色）：每 5 分钟拉取全量对账（source=parent）
+	if cfg.ParentNodeURL != "" && cfg.ParentNodeKey != "" {
+		parentSync := func() {
+			if err := blacklist.SyncFromParent(cfg.ParentNodeURL, cfg.ParentNodeKey, cfg.TLSSkipVerify); err != nil {
+				log.Printf("[黑名单同步] 从父节点同步失败: %v", err)
+				return
+			}
+			if err := firewall.RefreshBlacklist(); err != nil {
+				log.Printf("[黑名单同步] 刷新网段黑名单失败: %v", err)
+				return
+			}
+			log.Printf("[黑名单同步] 已从父节点完成黑名单对账")
+		}
+		if _, err := c.AddFunc("*/5 * * * *", parentSync); err != nil {
+			log.Fatalf("注册父节点黑名单同步任务失败: %v", err)
+		}
+		safeGo("初始黑名单同步", parentSync)
+	}
+
 	if cfg.SelfUpdateEnabled && cfg.SelfUpdateCheckCron != "" {
 		_, err = c.AddFunc(cfg.SelfUpdateCheckCron, func() {
 			status, checkErr := selfUpdateManager.Check(context.Background())
