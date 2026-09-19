@@ -846,12 +846,13 @@ func (s *State) handleV2AdminConfig(w http.ResponseWriter, r *http.Request) {
 
 		if manager != nil {
 			manager.UpdateConfig(selfupdate.Config{
-				Enabled:       newCfg.SelfUpdateEnabled,
-				RepoURL:       newCfg.SelfUpdateRepoURL,
-				Channel:       newCfg.SelfUpdateChannel,
-				AutoRestart:   newCfg.SelfUpdateAutoRestart,
-				ProxyURL:      newCfg.ProxyURL,
-				AssetProxyURL: newCfg.AssetProxyURL,
+				Enabled:            newCfg.SelfUpdateEnabled,
+				RepoURL:            newCfg.SelfUpdateRepoURL,
+				Channel:            newCfg.SelfUpdateChannel,
+				AutoRestart:        newCfg.SelfUpdateAutoRestart,
+				ProxyURL:           newCfg.ProxyURL,
+				AssetProxyURL:      newCfg.AssetProxyURL,
+				InsecureSkipVerify: newCfg.TLSSkipVerify,
 			})
 		}
 

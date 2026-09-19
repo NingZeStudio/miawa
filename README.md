@@ -95,6 +95,7 @@ go run ./cmd/mirror
 | `asset_proxy_url` | string | `""` | 资源下载地址前缀代理 |
 | `xget_enabled` | bool | — | 启用 xget 代理加速 |
 | `xget_domain` | string | — | xget 服务域名 |
+| `tls_skip_verify` | bool | `false` | 出站 HTTPS 跳过证书校验（自签证书/透明代理环境）。覆盖 GitHub API、资产下载、外部黑名单同步、自更新四条链路，**修改后需重启生效** |
 
 ### GitHub 与扫描
 
@@ -104,6 +105,8 @@ go run ./cmd/mirror
 | `check_cron` | string | `"*/10 * * * *"` | 扫描 Cron 表达式（分钟粒度） |
 | `download_timeout_minutes` | int | — | 单文件下载超时（分钟） |
 | `concurrent_downloads` | int | `3` | 并发下载数 |
+
+> **完整性校验开销**：每次扫描会对所有已镜像资产全量读盘比对 GitHub digest（元数据中的 `sha256` 由此保证与所服务文件一致）。大体积镜像请留意扫描期间的磁盘 IO 与 CPU 占用，必要时调低 `check_cron` 频率。
 
 ### PoW 下载验证
 

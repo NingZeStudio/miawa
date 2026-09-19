@@ -42,6 +42,8 @@ proxy_url: {{ yaml .ProxyURL }}
 asset_proxy_url: {{ yaml .AssetProxyURL }}
 xget_domain: {{ yaml .XgetDomain }}
 xget_enabled: {{ .XgetEnabled }}
+# 出站 HTTPS 跳过证书校验（自签证书/透明代理环境）；覆盖 GitHub API、资产下载、
+# 外部黑名单同步、自更新四条链路，修改后需重启生效
 tls_skip_verify: {{ .TLSSkipVerify }}
 
 admin_enabled: {{ .AdminEnabled }}

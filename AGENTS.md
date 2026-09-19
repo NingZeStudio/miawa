@@ -96,9 +96,10 @@
 ## GitHub 客户端
 
 - `internal/github/client.go`，go-github v50。`BackoffIfRateLimited`：当 `resp.Rate.Remaining == 0` 时 sleep 到 reset+2s（上限 15 分钟）。
-- `GetReleaseAssetDigests`：go-github v50 的 ReleaseAsset 无 Digest 字段，用本地结构体直接解析 release JSON 获取资产 SHA-256（供自更新校验）。
+- `GetReleaseAssetDigests`：go-github v50 的 ReleaseAsset 无 Digest 字段，用本地结构体直接解析 release JSON 获取资产 SHA-256（供自更新校验）。扫描期（downloader `ensureAssetHashed`）也会用它对全部资产做本地哈希比对：不一致重下 2 次，仍不一致告警并记录本地实际哈希（**元数据必须与所服务文件一致**）；代价是每轮扫描全量读盘，大镜像注意 IO。
 - Token 可选：无 token 60 req/h，有 token 5000/h。`GITHUB_TOKEN` env 优先于配置。
 - 代理：`proxy_url` 非空 → 显式 `http.ProxyURL`；为空 → 回退 `http.DefaultTransport`（即尊重 `HTTP_PROXY`/`HTTPS_PROXY` 环境变量）。运行时切代理用 `SetProxy`（atomic.Pointer 安全并发）。
+- `tls_skip_verify`（2026-09-18 起，默认 false）覆盖四条出站链路：GitHub API 客户端、资产下载器、外部黑名单同步、自更新。**语义是改后需重启**：ghc 与 Scanner（`sc.cfg`）都持有启动期配置快照，管理端无该开关的 UI；仅自更新经 `UpdateConfig` 热路径已传 `InsecureSkipVerify`（漏传会让任意后台保存把自更新静默打回严格校验，2026-09-19 已修）。
 - `ListReleasesByPolicy` 分页拉取并按 `include_prerelease` 过滤；`GetLatestRelease` API 不返回 pre-release，含 pre-release 时走 `ListReleases` 取首个。
 
 ## GeoIP
