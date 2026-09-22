@@ -302,7 +302,12 @@ func (s *State) handleV2Bandwidth(w http.ResponseWriter, r *http.Request) {
 	}
 	// 带宽是实时内存状态，禁用缓存（CDN/浏览器），否则前端轮询会一直拿到旧值。
 	markNoStore(w)
-	writeV2Success(w, r, s.bandwidth.Snapshot(), false)
+	// 附带本次进程启动以来的运行时长（与「累计传输」的统计窗口一致）
+	resp := struct {
+		bandwidth.Status
+		UptimeSeconds int64 `json:"uptime_seconds"`
+	}{s.bandwidth.Snapshot(), int64(time.Since(nodeStart).Seconds())}
+	writeV2Success(w, r, resp, false)
 }
 
 // handleV2PowConfig 返回 PoW 公开参数（算法/迭代数/难度），供客户端预知求解成本，信封包裹。

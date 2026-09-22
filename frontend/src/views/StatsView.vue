@@ -646,7 +646,7 @@ onUnmounted(() => {
               <div>
                 <p class="text-xs text-muted-foreground">累计传输</p>
                 <p class="text-2xl font-bold">{{ formatBytes(bandwidth.total_bytes_served) }}</p>
-                <p class="mt-1 text-xs text-muted-foreground">服务启动以来累计</p>
+                <p class="mt-1 text-xs text-muted-foreground">距上次启动 {{ formatUptime(bandwidth.uptime_seconds || 0) }}</p>
               </div>
             </div>
             <div class="mt-4">
