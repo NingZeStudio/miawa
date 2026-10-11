@@ -244,7 +244,9 @@ func TestDownloadHandlerRecordsCompletedTrafficOnFullDownload(t *testing.T) {
 
 func TestBandwidthEndpointReportsServedBytes(t *testing.T) {
 	cfg := &config.Config{PowEnabled: false, BandwidthLimitMbps: 200}
-	_, handler, path := setupDownloadHandlerState(t, cfg, 1, "hello")
+	state, handler, path := setupDownloadHandlerState(t, cfg, 1, "hello")
+	// 生产链路带宽记账在 BandwidthMiddleware（下载处理器不再自记），测试按生产链路包上
+	handler = state.BandwidthMiddleware(handler)
 
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	req.RemoteAddr = "127.0.0.1:1234"

@@ -1544,12 +1544,12 @@ components:
           type: integer
           format: int64
           example: 536870912000
-          description: Cumulative normal download traffic in bytes
+          description: Cumulative download traffic in bytes (served semantics — all bytes actually sent, including partial/aborted transfers and reused range segments)
         last_30_traffic_bytes:
           type: integer
           format: int64
           example: 53687091200
-          description: Normal download traffic in bytes over the last 30 days
+          description: Download traffic in bytes over the last 30 days (served semantics)
         disk:
           allOf:
             - $ref: '#/components/schemas/DiskInfo'

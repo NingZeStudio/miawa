@@ -77,17 +77,17 @@ func TestComputeStatsDataTraffic(t *testing.T) {
 
 	data := computeStatsData()
 
-	// 展示口径（completed）总流量 = 512 + 1024 + 2048 = 3584
-	if data.TotalTrafficBytes != 3584 {
-		t.Fatalf("TotalTrafficBytes = %d, want 3584", data.TotalTrafficBytes)
+	// 总流量（served 口径）= 1024 + 2048 + 4096 = 7168
+	if data.TotalTrafficBytes != 7168 {
+		t.Fatalf("TotalTrafficBytes = %d, want 7168", data.TotalTrafficBytes)
 	}
 
-	// 展示口径最近30天流量 = 3584（全部在30天内）
-	if data.Last30TrafficBytes != 3584 {
-		t.Fatalf("Last30TrafficBytes = %d, want 3584", data.Last30TrafficBytes)
+	// served 口径最近30天流量 = 7168（全部在30天内）
+	if data.Last30TrafficBytes != 7168 {
+		t.Fatalf("Last30TrafficBytes = %d, want 7168", data.Last30TrafficBytes)
 	}
 
-	// served 口径总流量 = 1024 + 2048 + 4096 = 7168
+	// 兼容字段与总流量同口径同值
 	if data.TotalServedBytes != 7168 {
 		t.Fatalf("TotalServedBytes = %d, want 7168", data.TotalServedBytes)
 	}
@@ -95,7 +95,7 @@ func TestComputeStatsDataTraffic(t *testing.T) {
 		t.Fatalf("Last30ServedBytes = %d, want 7168", data.Last30ServedBytes)
 	}
 
-	// 验证 DailyStats 中的流量（展示口径）
+	// 验证 DailyStats 中的流量（served 口径）
 	todayTraffic := int64(0)
 	yesterdayTraffic := int64(0)
 	for _, ds := range data.DailyStats {
@@ -107,13 +107,13 @@ func TestComputeStatsDataTraffic(t *testing.T) {
 		}
 	}
 
-	// 今日完整传输流量 = 512 + 1024 = 1536
-	if todayTraffic != 1536 {
-		t.Fatalf("today traffic = %d, want 1536", todayTraffic)
+	// 今日 served 流量 = 1024 + 2048 = 3072
+	if todayTraffic != 3072 {
+		t.Fatalf("today traffic = %d, want 3072", todayTraffic)
 	}
-	// 昨日完整传输流量 = 2048
-	if yesterdayTraffic != 2048 {
-		t.Fatalf("yesterday traffic = %d, want 2048", yesterdayTraffic)
+	// 昨日 served 流量 = 4096
+	if yesterdayTraffic != 4096 {
+		t.Fatalf("yesterday traffic = %d, want 4096", yesterdayTraffic)
 	}
 }
 
@@ -155,14 +155,14 @@ func TestComputeStatsDataEventsMerge(t *testing.T) {
 
 	data := computeStatsData()
 
-	// completed 总 = 基线 1000 + 事件 500 = 1500
-	if data.TotalTrafficBytes != 1500 {
-		t.Fatalf("TotalTrafficBytes = %d, want 1500", data.TotalTrafficBytes)
+	// 总流量（served 口径）= 基线 2000 + 事件 500 = 2500
+	if data.TotalTrafficBytes != 2500 {
+		t.Fatalf("TotalTrafficBytes = %d, want 2500", data.TotalTrafficBytes)
 	}
-	if data.Last30TrafficBytes != 1500 {
-		t.Fatalf("Last30TrafficBytes = %d, want 1500", data.Last30TrafficBytes)
+	if data.Last30TrafficBytes != 2500 {
+		t.Fatalf("Last30TrafficBytes = %d, want 2500", data.Last30TrafficBytes)
 	}
-	// served 总 = 基线 2000 + 事件 500 = 2500
+	// 兼容字段与总流量同口径同值
 	if data.TotalServedBytes != 2500 {
 		t.Fatalf("TotalServedBytes = %d, want 2500", data.TotalServedBytes)
 	}
@@ -177,10 +177,10 @@ func TestComputeStatsDataEventsMerge(t *testing.T) {
 	if len(data.TopDownloads) != 1 || data.TopDownloads[0].Launcher != "fcl" || data.TopDownloads[0].Count != 1 {
 		t.Fatalf("TopDownloads = %+v, want fcl=1", data.TopDownloads)
 	}
-	// DailyStats 今日 completed = 1000 + 500 = 1500
+	// DailyStats 今日 served = 2000 + 500 = 2500
 	for _, ds := range data.DailyStats {
-		if ds.Date == today && ds.TrafficBytes != 1500 {
-			t.Fatalf("today TrafficBytes = %d, want 1500", ds.TrafficBytes)
+		if ds.Date == today && ds.TrafficBytes != 2500 {
+			t.Fatalf("today TrafficBytes = %d, want 2500", ds.TrafficBytes)
 		}
 	}
 	// DailyStats 今日下载次数 = 事件表 1（downloads 表冻结为 0 行，不得回退为 0）

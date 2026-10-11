@@ -391,13 +391,14 @@ func RecordDownload(r *http.Request, fileName, launcher, version string) {
 }
 
 type StatsData struct {
-	TotalVisits        int64          `json:"total_visits"`
-	TotalDownloads     int64          `json:"total_downloads"`
-	TotalDays          int64          `json:"total_days"`
-	Last30Visits       int64          `json:"last_30_visits"`
-	Last30Downloads    int64          `json:"last_30_downloads"`
-	TotalTrafficBytes  int64          `json:"total_traffic_bytes"`
-	Last30TrafficBytes int64          `json:"last_30_traffic_bytes"`
+	TotalVisits      int64 `json:"total_visits"`
+	TotalDownloads   int64 `json:"total_downloads"`
+	TotalDays        int64 `json:"total_days"`
+	Last30Visits     int64 `json:"last_30_visits"`
+	Last30Downloads  int64 `json:"last_30_downloads"`
+	TotalTrafficBytes  int64 `json:"total_traffic_bytes"`  // 总流量（served 口径：实际送出的全部字节）
+	Last30TrafficBytes int64 `json:"last_30_traffic_bytes"` // 近 30 日流量（served 口径）
+	// TotalServedBytes/Last30ServedBytes 兼容保留：与对应 traffic 字段同口径同值
 	TotalServedBytes   int64          `json:"total_served_bytes"`
 	Last30ServedBytes  int64          `json:"last_30_served_bytes"`
 	Disk               *DiskInfo      `json:"disk"`
@@ -642,7 +643,7 @@ func findOrCreateDailyStat(data *StatsData, date string) *DailyStat {
 
 // applyDownloadAndTrafficStats 计算下载次数与流量字节：
 //   - 下载次数/top 完全来自 download_events（含历史回填）；
-//   - 流量字节 = 冻结基线（daily_traffic/daily_completed_traffic）SUM + 事件表 SUM。
+//   - 流量字节 = 冻结基线（daily_traffic）SUM + 事件表全量 SUM，served 口径。
 //
 // 历史字节无法逐事件回填（基线是按日聚合），故基线表冻结为只读历史总量，新数据由事件表承载。
 func applyDownloadAndTrafficStats(data *StatsData) {
@@ -651,56 +652,46 @@ func applyDownloadAndTrafficStats(data *StatsData) {
 		data.TotalDownloads = v
 	}
 
-	// 每日事件聚合（served/completed/count）
+	// 每日事件聚合（served/count）
 	evtStats, _ := db.GetDailyEventStats(30)
-	var last30EvtCount, last30EvtCompleted, last30EvtServed int64
+	var last30EvtCount, last30EvtServed int64
 	evtCount := map[string]int64{}
-	evtCompleted := map[string]int64{}
+	evtServed := map[string]int64{}
 	for _, s := range evtStats {
 		last30EvtCount += s.Count
-		last30EvtCompleted += s.Completed
 		last30EvtServed += s.Served
 		evtCount[s.Date] = s.Count
-		evtCompleted[s.Date] = s.Completed
+		evtServed[s.Date] = s.Served
 	}
 	data.Last30Downloads = last30EvtCount
 	mergeDailyDownloads(data, evtCount)
 
-	// 流量总量 = 冻结基线 + 事件
-	if bv, err := db.GetTotalCompletedTraffic(); err == nil {
-		data.TotalTrafficBytes = bv
-	}
-	if ev, err := db.GetTotalCompletedFromEvents(); err == nil {
-		data.TotalTrafficBytes += ev
-	}
-	if bv, err := db.GetTotalTraffic(); err == nil {
-		data.TotalServedBytes = bv
-	}
-	if ev, err := db.GetTotalServedFromEvents(); err == nil {
-		data.TotalServedBytes += ev
-	}
+	// 流量总量 = 冻结基线（daily_traffic）+ 事件表全量，served 口径。
+	// 不再使用 completed 口径合计：多段复用连接（IDM/aria2/浏览器分段）的
+	// completed 几乎恒为 false（multi-range 的预估字节取整个文件大小），
+	// completed 合计会严重低估实际送出流量。
+	totalBaseServed, _ := db.GetTotalTraffic()
+	totalEvtServed, _ := db.GetTotalServedFromEvents()
+	data.TotalTrafficBytes = totalBaseServed + totalEvtServed
+	data.TotalServedBytes = data.TotalTrafficBytes // 兼容保留：与总流量同口径同值
 
-	// last30 每日：baseline + events
-	baseCompleted, _ := db.GetDailyCompletedTrafficStats(30)
+	// last30 每日：baseline served + events served
 	baseServed, _ := db.GetDailyTrafficStats(30)
-	var last30BaseCompleted, last30BaseServed int64
-	dailyCompletedMap := map[string]int64{}
-	for _, s := range baseCompleted {
-		last30BaseCompleted += s.Bytes
-		dailyCompletedMap[s.Date] += s.Bytes
-	}
+	var last30BaseServed int64
+	dailyServedMap := map[string]int64{}
 	for _, s := range baseServed {
 		last30BaseServed += s.Bytes
+		dailyServedMap[s.Date] += s.Bytes
 	}
-	for date, c := range evtCompleted {
-		dailyCompletedMap[date] += c
+	for date, c := range evtServed {
+		dailyServedMap[date] += c
 	}
-	data.Last30TrafficBytes = last30BaseCompleted + last30EvtCompleted
-	data.Last30ServedBytes = last30BaseServed + last30EvtServed
+	data.Last30TrafficBytes = last30BaseServed + last30EvtServed
+	data.Last30ServedBytes = data.Last30TrafficBytes
 
 	// 排序必须放在所有合并之后：mergeDailyTraffic 可能追加基线中独有的旧日期，
 	// 追加到尾部会破坏 mergeDailyDownloads 里已排好的顺序。
-	mergeDailyTraffic(data, dailyCompletedMap)
+	mergeDailyTraffic(data, dailyServedMap)
 	sort.Slice(data.DailyStats, func(i, j int) bool { return data.DailyStats[i].Date > data.DailyStats[j].Date })
 }
 

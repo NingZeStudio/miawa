@@ -40,6 +40,10 @@ func StartHTTPWithScan(addr string, s *State, scanFunc func(), launcherScanFunc 
 
 	handler = s.SecurityMiddleware(handler)
 
+	// 应用层带宽统计放最外层：SPA 回退/静态资产/安全中间件自身的错误响应
+	// （429/403 等）全部计入出站字节，口径覆盖全站。
+	handler = s.BandwidthMiddleware(handler)
+
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      handler,

@@ -346,8 +346,8 @@ GET /api/v2/stats
 | `total_days` | int | 站点自首次启动至今的天数 |
 | `last_30_visits` | int | 最近 30 天访问量 |
 | `last_30_downloads` | int | 最近 30 天普通下载量 |
-| `total_traffic_bytes` | int | 累计普通下载流量（字节） |
-| `last_30_traffic_bytes` | int | 最近 30 天普通下载流量（字节） |
+| `total_traffic_bytes` | int | 累计下载流量，served 口径（字节，含分段/中止的部分传输） |
+| `last_30_traffic_bytes` | int | 最近 30 天下载流量，served 口径（字节） |
 | `disk.total` | int | 存储路径所在磁盘总容量（字节） |
 | `disk.free` | int | 剩余可用空间（字节） |
 | `disk.used` | int | 已用空间（字节） |

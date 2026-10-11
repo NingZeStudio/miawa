@@ -716,10 +716,11 @@ func (s *State) Routes(mux *http.ServeMux) {
 
 		s.bandwidth.StartDownload()
 		defer s.bandwidth.FinishDownload()
+		// 带宽记账职责已上移到 BandwidthMiddleware（全站出站字节统一统计），
+		// 此处 counter 只服务防刷墙结算与事件表口径，避免双计。
 		countingWriter := &responseWriterCounter{
 			ResponseWriter: w,
 			counter:        counter,
-			recordBytes:    s.bandwidth.RecordBytes,
 		}
 		// token-based URL，禁止中间缓存共享。
 		w.Header().Set("Cache-Control", "private, no-store")
@@ -1323,7 +1324,6 @@ type responseWriterCounter struct {
 	counter     *traffic.CountingWriter
 	statusCode  int
 	wroteHeader bool
-	recordBytes func(int64)
 }
 
 func (rw *responseWriterCounter) WriteHeader(statusCode int) {
@@ -1339,21 +1339,17 @@ func (rw *responseWriterCounter) Write(p []byte) (int, error) {
 	}
 	n, err := rw.ResponseWriter.Write(p)
 	rw.counter.Total += int64(n)
-	if n > 0 && rw.recordBytes != nil {
-		rw.recordBytes(int64(n))
-	}
 	return n, err
 }
 
-// ReadFrom 把底层 ResponseWriter 的 io.ReaderFrom 能力透传给 http.ServeFile，
-// 恢复 Linux sendfile 零拷贝路径（包装器默认会禁用它，大文件走用户态拷贝）。
+// ReadFrom 把底层 ResponseWriter 的 io.ReaderFrom 能力透传给 http.ServeFile。
+// 生产链路上底层是 BandwidthMiddleware 的 countingResponseWriter（分块复制、
+// 逐块记账），此处只累计 counter.Total 供防刷墙结算与事件表记录；
+// 带宽记账由中间件完成，不在此重复统计。
 func (rw *responseWriterCounter) ReadFrom(r io.Reader) (int64, error) {
 	if rf, ok := rw.ResponseWriter.(io.ReaderFrom); ok {
 		n, err := rf.ReadFrom(r)
 		rw.counter.Total += n
-		if n > 0 && rw.recordBytes != nil {
-			rw.recordBytes(n)
-		}
 		return n, err
 	}
 	return io.Copy(struct{ io.Writer }{rw}, r)

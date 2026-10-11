@@ -19,9 +19,10 @@ type sample struct {
 	bytes int64
 }
 
-// Tracker records bytes written by download responses and exposes a short
-// rolling bandwidth estimate. It intentionally stays in memory because it is
-// an operational status signal, not historical accounting.
+// Tracker records bytes written by ALL outbound HTTP responses (fed by the
+// server's BandwidthMiddleware) and exposes a short rolling bandwidth estimate.
+// It intentionally stays in memory because it is an operational status signal,
+// not historical accounting.
 type Tracker struct {
 	peakMbps int64
 

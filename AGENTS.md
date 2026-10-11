@@ -18,8 +18,8 @@
 
 - `cmd/mirror/main.go` — 唯一入口。启动顺序：释放内嵌前端 → 加载配置 → InitDB → 流量 tracker → stats 写池（4 worker + 1000 缓冲）→ server.State → scanner（cron）→ selfupdate manager → cron 调度。`Scanner.scanLauncher` 是同步主循环，`ScanAll` 用 `scanMu.TryLock` 防重入。
 - **版本保留双口径（2026-09-19）**：扫描窗口 = `ListReleasesByPolicy` 按**上游发布序**取前 N；保留窗口 = `TrimLauncherVersions` 按**版本号序**保留前 N。上游删除 release 会留下磁盘孤儿目录，按版本号永久占位，使扫描窗口内的版本每轮「下载完即被清理」（zl2/2.5.2 事故，每小时空转 ~880MB）。故扫描期裁剪传入上游版本集合（孤儿优先淘汰），启动期裁剪传 nil 按纯版本号。
-- **带宽压力分流（2026-09-19）**：landing 端点在活跃下载连接数 ≥ `download_offload_active_downloads` 时，把 `download_offload_launchers` 名单内启动器的 `download_url` 换成 `download_offload_url` + `/verify?file=`（备用节点是独立完整镜像、有自己的 PoW/token，故引导其验证页重新验证）。仅影响浏览器 landing 流，prepare + /download 直连不受影响；名单外启动器绝不分流。触发信号任一满足：活跃连接数 ≥ `download_offload_active_downloads`，或实时带宽 ≥ `download_offload_mbps`（主服突发带宽大，带宽水位更直接）。配置逐请求读取，后台保存即时生效。us1 子节点（us1.miawa.cn）为此部署：独立扫 GitHub、3 热门启动器（axolotl/fcl/zl2，占主服 95% 下载量）、Caddy 自动 HTTPS、systemd 守护、release 通道自更新。
-- `internal/server/` — HTTP 路由 + SPA 托管 + 下载处理器。`server.go`（41KB，单体）是改动热点；`v2.go` 是公开 API v2 handler；`spafallback.go` SPA 回退；`http.go`/`utils.go` 小工具。**下载处理器是流量计数的唯一计数点**（见下"流量统计双口径"）。
+- **带宽压力分流（2026-09-19）**：landing 端点在活跃下载连接数 ≥ `download_offload_active_downloads` 时，把 `download_offload_launchers` 名单内启动器的 `download_url` 换成 `download_offload_url` + `/verify?file=`（备用节点是独立完整镜像、有自己的 PoW/token，故引导其验证页重新验证）。仅影响浏览器 landing 流，prepare + /download 直连不受影响；名单外启动器绝不分流。触发信号任一满足：活跃连接数 ≥ `download_offload_active_downloads`，或实时带宽 ≥ `download_offload_mbps`（主服突发带宽大，带宽水位更直接；2026-10-11 起带宽为全站出站口径）。配置逐请求读取，后台保存即时生效。us1 子节点（us1.miawa.cn）为此部署：独立扫 GitHub、3 热门启动器（axolotl/fcl/zl2，占主服 95% 下载量）、Caddy 自动 HTTPS、systemd 守护、release 通道自更新。
+- `internal/server/` — HTTP 路由 + SPA 托管 + 下载处理器。`server.go`（41KB，单体）是改动热点；`v2.go` 是公开 API v2 handler；`spafallback.go` SPA 回退；`http.go`/`utils.go` 小工具；`bandwidth_middleware.go` 全站出站带宽统计（见下"流量统计双口径"）。
 - `internal/db/` — 数据库抽象（SQLite/MySQL/PostgreSQL），见下"数据库"。
 - `internal/config/` — 配置加载/保存/迁移，见下"配置"。
 - `internal/stats/` — 访问/下载统计，异步写池 + 快照预热。
@@ -74,11 +74,13 @@
 - 配置项：`rate_limit_enabled`(true)/`rate_limit_per_minute`(300)/`rate_limit_ban_threshold`(3)/`firewall_whitelist`([]string, IP 或 CIDR，NormalizeConfig 校验合法性)。`handleV2AdminConfig` POST 对这 4 个字段做**缺键保留原值**（管理端表单只提交注册过的字段，不做保护会在 UI 保存时清空白名单）；黑名单 POST 用 `netutil.ValidEntry` 校验 IP/CIDR，非法返回 400。
 - 管理端 UI：ConfigPage「防火墙设置」卡片；BlacklistPage 添加表单支持 CIDR（前端轻校验 + 后端权威校验），「自动封禁」分类已修正为匹配 source `local`（旧代码只匹配不存在的 `auto` 值，自动封禁记录一直显示"未知"）。
 
-## 流量统计双口径（2026-08 起）
+## 流量统计双口径（2026-08 起；带宽统计重构 2026-10-11）
 
 - `daily_traffic` = served（服务器写出字节，含中止传输），防刷墙专用。
-- `daily_completed_traffic` = 完整传输字节（`counter.Total >= EstimateTransferBytes(...)` 且状态 200/206），stats 展示口径。
-- 唯一计数点：`internal/server/server.go` 下载处理器（`responseWriterCounter` 包装 ResponseWriter，ReadFrom 直通保留 sendfile；FinalizeTraffic 已 defer 化回收 pending 预留）。事件落库：`db.RecordDownloadEvent`（`download_events` 表）；防刷墙读 `GetDailyServedByIPFromEventsToday`。**`RecordTraffic`/`RecordCompletedTraffic`/`stats.RecordDownload` 已冻结只供测试，勿在请求路径调用。**
+- `daily_completed_traffic` = 完整传输字节（`counter.Total >= EstimateTransferBytes(...)` 且状态 200/206）。
+- **带宽统计（2026-10-11 重构）**：`BandwidthMiddleware`（`server/bandwidth_middleware.go`）挂最外层（SecurityMiddleware 之外），包装 ResponseWriter 把**全站出站字节**（SPA/静态/API/下载/错误响应）实时喂 `internal/bandwidth` Tracker。ReadFrom 有意**不透传** sendfile（放弃零拷贝），128KB 分块（sync.Pool）逐块经 Write 记账——旧实现传输结束才一次性记账，大文件传输期间「当前带宽」恒为 0、结束瞬间冲高，`download_offload_mbps` 分流水位判断失真。下载处理器的 `responseWriterCounter` 不再记带宽（防双计），只留 counter（防刷墙/事件表口径）。
+- **流量合计口径（2026-10-11 改 served）**：`total_traffic_bytes`/`last_30_traffic_bytes`/每日 TrafficBytes = 冻结基线（`daily_traffic`）SUM + `download_events` 全量 SUM(bytes_served)。不再用 completed 合计：多段复用连接的 completed 几乎恒为 false（multi-range 预估取整个文件大小），completed 合计严重低估。`total_served_bytes`/`last_30_served_bytes` 兼容保留、与 traffic 字段同值。
+- 事件落库：`db.RecordDownloadEvent`（`download_events` 表）；防刷墙读 `GetDailyServedByIPFromEventsToday`。**`RecordTraffic`/`RecordCompletedTraffic`/`stats.RecordDownload` 已冻结只供测试，勿在请求路径调用。**
 - **下载次数口径 = 授权会话数（2026-09-19）**：PeekReuse 放行的分段复用连接记录事件时 `SplitSegment=true`（event_count=0），只累计字节不计数次——SUM(event_count) 即每个一次性授权恰好 1 次；TTL 过期后重新验证产生新授权才再计 1 次。字节/防刷墙口径不受影响。
 - stats 展示口径 = 冻结基线 SUM + `download_events` SUM（合并后统一排序 DailyStats）；防刷墙取 `download_events` 按 IP 当日 served。
 - `stats.InitWritePool(4, 1000)`：访问/下载记录异步落库，**不要在请求路径里同步写 DB 统计**。`/api/v2/stats` 走 `RefreshSnapshot` 预热（启动 + 每 10m 刷新）的快照，避免每次跑聚合查询。
