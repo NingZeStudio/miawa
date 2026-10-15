@@ -42,7 +42,7 @@
 
 ## 设计体系（2026-09-02 起与 LogShare.CN 同步）
 
-- **来源**：工作室另一项目 `~/Project/LogShare-Web-UI`（NingZeStudio）。设计体系整体迁移自该项目，改样式前应对照其实现保持两边同步（同工作室视觉一致性约定）。
+- **来源**：工作室另一项目 `~/Project/LogShare-Web-UI`（anylyralabs）。设计体系整体迁移自该项目，改样式前应对照其实现保持两边同步（同工作室视觉一致性约定）。
 - **字体**：自托管 HarmonyOS Sans SC（界面，2 个 woff2 子集）+ SauceCode Mono（等宽，4 个字重），位于 `src/assets/fonts/`，`@font-face` 定义在 `src/style.css`，经 `--font-sans`/`--font-mono` 变量接入 Tailwind `fontFamily`。
 - **圆角刻度**：LogShare 的 7 档刻度（`--radius-sm` 0.25rem 到 `--radius-3xl` 1.5rem），映射在 `tailwind.config.js` 的 `borderRadius`（`rounded-sm`=sm … `rounded-2xl`=3xl，`rounded-lg`=xl 即 0.75rem）。与旧 shadcn 刻度不同，`rounded-lg` 现在更大。
 - **回弹缓动**：`cubic-bezier(0.34, 1.7, 0.64, 1)`，Tailwind `ease-bounce-soft` + `style.css` 里 @layer utilities 对 `transition-*` 类的整体覆盖，全站过渡自动回弹。

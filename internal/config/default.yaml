@@ -227,7 +227,7 @@ self_update_auto_restart: true
 #   max_versions      - 最大保留版本数（0 或负值默认为 3）
 launchers:
   - name: "mirror"
-    source_url: "https://github.com/ningzestudio/lemwood-mirror"
+    source_url: "https://github.com/anylyralabs/miawa"
     repo_selector: ""
     mode: "all"
     include_prerelease: true

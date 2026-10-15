@@ -58,7 +58,7 @@ useSeoMeta(
           项目简介
         </div>
         <p class="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Lemwood Mirror 是面向 Minecraft Java 版社区的开源镜像服务，由柠泽工作室自托管运营。我们全自动追踪各启动器的
+          Lemwood Mirror 是面向 Minecraft Java 版社区的开源镜像服务，由 AnyLyraLabs 自托管运营。我们全自动追踪各启动器的
           GitHub Releases，第一时间同步最新版本——让网络不畅的地区，也能顺畅下载。
         </p>
       </div>

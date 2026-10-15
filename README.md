@@ -1,6 +1,6 @@
 # 柠泽资源站
 
-[![CI](https://img.shields.io/github/actions/workflow/status/NingZeStudio/lemwood-mirror/build.yml?branch=main)](https://github.com/NingZeStudio/lemwood-mirror/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/anylyralabs/miawa/build.yml?branch=main)](https://github.com/anylyralabs/miawa/actions)
 [![Go Version](https://img.shields.io/badge/Go-1.25-blue)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 

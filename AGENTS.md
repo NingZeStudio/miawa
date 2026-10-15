@@ -148,7 +148,7 @@
 
 ## 2026-09-12 管理端前端全面重构（ElementsPlus-Admin-Template）
 
-- **技术栈全面统一**：废弃并彻底移除历史遗留的 React 19 + Ant Design 架构，基于 `NingZeStudio/ElementsPlus-Admin-Template` 重新开发管理后台。技术栈统一为 Vue 3.5 + TypeScript + Vite 6 + Tailwind CSS + Element Plus 2.9 + Pinia 2.3 + Lucide 图标库。
+- **技术栈全面统一**：废弃并彻底移除历史遗留的 React 19 + Ant Design 架构，基于 `anylyralabs/ElementsPlus-Admin-Template` 重新开发管理后台。技术栈统一为 Vue 3.5 + TypeScript + Vite 6 + Tailwind CSS + Element Plus 2.9 + Pinia 2.3 + Lucide 图标库。
 - **视觉风格规范**：全站采用低饱和度 Zinc 灰色系与 Shadcn-like 微阴影、轻边框设计风格，支持暗黑模式无缝平滑切换，避免高饱和度渐变色。
 - **模块与页面完整重构**：
   - `src/views/login/index.vue`：用户名/密码登录，自动检测服务端 TOTP 状态并支持 6 位动态验证码校验。

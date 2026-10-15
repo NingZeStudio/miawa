@@ -38,7 +38,7 @@ const (
 
 // DefaultRepoURL 是 self_update_repo_url 留空时回退使用的默认更新源
 // （本项目自身仓库）。允许 fork 维护者在配置中显式指定自己的仓库地址覆盖。
-const DefaultRepoURL = "https://github.com/NingZeStudio/lemwood-mirror"
+const DefaultRepoURL = "https://github.com/anylyralabs/miawa"
 
 const (
 	maxUpdateDownloadSize  = 200 << 20

@@ -1,6 +1,6 @@
 # ElementsPlus Admin for Lemwood Mirror
 
-基于 [NingZeStudio/ElementsPlus-Admin-Template](https://github.com/NingZeStudio/ElementsPlus-Admin-Template) 构建的现代管理后台，为 Lemwood Mirror 启动器分发镜像服务提供可视化管理控制台。
+基于 [anylyralabs/ElementsPlus-Admin-Template](https://github.com/anylyralabs/ElementsPlus-Admin-Template) 构建的现代管理后台，为 Lemwood Mirror 启动器分发镜像服务提供可视化管理控制台。
 
 ## 技术栈与设计规范
 
