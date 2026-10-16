@@ -39,7 +39,10 @@ const (
 	defaultDifficulty                 = 14 // 前导零位数；~16K 次 PBKDF2 期望迭代
 	defaultTTL                        = 2 * time.Minute
 	defaultMaxChallenges              = 4096
-	defaultMaxChallengesPerIP         = 8
+	// 默认 32：验证页每刷新/重试一次就新建一条挑战（TTL 内计数），
+	// 移动运营商 CGNAT 出口 IP 下多名用户共享同一 client_ip，
+	// 过小的每 IP 上限会把正常用户挡在门外（2026-10-16 事故）。
+	defaultMaxChallengesPerIP         = 32
 	defaultMaxConcurrentVerifications = 4
 	saltLen                           = 16
 	nonceLen                          = 16
@@ -224,8 +227,13 @@ func (m *Manager) CreateChallenge(filePath, clientIP, sourceKind string) (Challe
 
 	m.mu.Lock()
 	if len(m.challenges) >= m.maxChallenges || m.byIP[clientIP] >= m.maxChallengesPerIP {
-		m.mu.Unlock()
-		return Challenge{}, errors.New("pow: challenge rate limit exceeded")
+		// 撞限流时先惰性清理过期/已消费的挑战再试一次：
+		// 后台清理 loop 间隔 30s，单纯等待会让用户在最坏情况下卡满整个窗口。
+		m.pruneExpiredLocked(now)
+		if len(m.challenges) >= m.maxChallenges || m.byIP[clientIP] >= m.maxChallengesPerIP {
+			m.mu.Unlock()
+			return Challenge{}, errors.New("pow: challenge rate limit exceeded")
+		}
 	}
 	m.challenges[nonceHex] = &entry{
 		params:     params,
@@ -399,13 +407,17 @@ func (m *Manager) cleanupLoop() {
 			return
 		case <-ticker.C:
 			m.mu.Lock()
-			now := time.Now()
-			for id, e := range m.challenges {
-				if now.After(e.expiresAt) || e.state == "consumed" {
-					m.removeLocked(id)
-				}
-			}
+			m.pruneExpiredLocked(time.Now())
 			m.mu.Unlock()
+		}
+	}
+}
+
+// pruneExpiredLocked 清理过期与已消费的挑战（调用方需持锁）。
+func (m *Manager) pruneExpiredLocked(now time.Time) {
+	for id, e := range m.challenges {
+		if now.After(e.expiresAt) || e.state == "consumed" {
+			m.removeLocked(id)
 		}
 	}
 }
