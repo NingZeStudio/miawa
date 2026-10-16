@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useSeoMeta } from '@/composables/useSeoMeta'
 import {
   PhAndroidLogo as AndroidLogo,
   PhArrowLineUp as ArrowUpToLine,
